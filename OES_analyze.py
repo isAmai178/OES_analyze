@@ -150,7 +150,7 @@ class OESAnalysis:
             '波段': value,
             '最小值': data[0],
             '最大值': data[1],
-            '差值': data[1] - data[0]
+            '變化量': data[1] - data[0]
         } for value, data in sorted(specific_differences.items())]
 
     def _prepare_significant_data(self, significant_differences: Dict) -> List[Dict]:
@@ -159,7 +159,7 @@ class OESAnalysis:
             '波段': value,
             '最小值': data[0],
             '最大值': data[1],
-            '差值': data[1] - data[0]
+            '變化量': data[1] - data[0]
         } for value, data in sorted(significant_differences.items())]
 
 if __name__ == "__main__":
