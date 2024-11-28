@@ -120,10 +120,15 @@ class OESAnalyzer:
             # 收集數據
             self.gather_values()
             
+            # 創建結果資料夾
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            output_directory = os.path.join(current_dir, "OES光譜分析結果")
+            os.makedirs(output_directory, exist_ok=True)
+
             # 準備Excel輸出
-            output_directory = os.path.basename(os.path.dirname(self.selected_files[0]))
-            excel_name = f"{output_directory}_spectral_dissociations.xlsx"
-            specific_excel_name = f"{output_directory}_specific_wavebands.xlsx"
+            input_folder_name = os.path.basename(os.path.dirname(self.selected_files[0]))
+            excel_name = os.path.join(output_directory, f"{input_folder_name}_spectral_dissociations.xlsx")
+            specific_excel_name = os.path.join(output_directory, f"{input_folder_name}_specific_wavebands.xlsx")
 
             # 處理特定波段數據
             with pd.ExcelWriter(specific_excel_name) as specific_writer:
