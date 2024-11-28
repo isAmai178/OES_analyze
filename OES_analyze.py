@@ -111,8 +111,7 @@ class OESAnalyzer:
         return self.selected_files[start_index:end_index + 1]
 
     def analyze_and_export(self, wavebands: List[float], thresholds: List[float], 
-                      initial_start: int, initial_end: int,
-                      excel_path: str, specific_excel_path: str) -> Tuple[str, str]:
+                          initial_start: int, initial_end: int) -> Tuple[str, str]:
         """執行分析並導出結果"""
         try:
             if not self.selected_files:
