@@ -31,25 +31,37 @@ class OESAnalyzerGUI(QMainWindow):
     
     def create_peak_display(self, parent_layout):
         """創建峰值顯示區域"""
-        group = QGroupBox("最高點波段(由大到小)")
+        group = QGroupBox("峰值比較")
         layout = QVBoxLayout()
         
         self.peak_text = QTextEdit()
         self.peak_text.setReadOnly(True)
-        self.peak_text.setMaximumHeight(100)  # 限制高度
+        self.peak_text.setMaximumHeight(150)  # 限制高度
         layout.addWidget(self.peak_text)
         
         group.setLayout(layout)
         parent_layout.addWidget(group)
 
-    def update_peak_display(self, peak_points: List[Dict]):
+    def update_peak_display(self, peak_points: List[Dict], comparison_results: List[Dict] = None):
         """更新峰值顯示"""
-        peak_info = "分析發現的主要峰值點：\n"
+        peak_info = "當前數據的主要峰值點：\n"
         # 只顯示前5個最高點
         for point in peak_points[:5]:
             peak_info += (f"波段: {point['波段']:.1f} nm, "
                          f"最大值: {point['最大值']:.2f}, "
                          f"時間點: {point['時間點']}秒\n")
+            
+        if comparison_results:
+            peak_info += "\n兩個數據集的比較結果：\n"
+            for result in comparison_results:
+                peak_info += f"\n波段: {result['波段']:.1f} nm\n"
+                if result['數據集1_最大值'] is not None:
+                    peak_info += f"數據集1: 最大值={result['數據集1_最大值']:.2f}, 時間點={result['數據集1_時間點']}秒\n"
+                if result['數據集2_最大值'] is not None:
+                    peak_info += f"數據集2: 最大值={result['數據集2_最大值']:.2f}, 時間點={result['數據集2_時間點']}秒\n"
+                if '差異' in result:
+                    peak_info += f"差異: {result['差異']:.2f}\n"
+
         self.peak_text.setText(peak_info)
     
     def create_file_selection(self, parent_layout):
@@ -182,7 +194,17 @@ class OESAnalyzerGUI(QMainWindow):
              # 找出並顯示峰值點
             peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
             self.update_peak_display(peak_points)
-
+            # 如果有之前的分析結果，進行比較
+            if hasattr(self, 'previous_values'):
+                comparison_results = self.analyzer.compare_peak_points(
+                    self.previous_values, 
+                    self.analyzer.all_values)
+                self.update_peak_display(peak_points, comparison_results)
+            else:
+                self.update_peak_display(peak_points)
+        
+            # 保存當前分析結果供下次比較
+            self.previous_values = self.analyzer.all_values.copy()
             result_message = (
                 f"分析完成！結果已保存至：\n"
                 f"1. 光譜變化分析：{os.path.basename(excel_file)}\n"

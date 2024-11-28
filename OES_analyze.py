@@ -168,3 +168,44 @@ class OESAnalyzer:
         except Exception as e:
             self.update_status(f"Analysis failed: {str(e)}")
             raise
+    def compare_peak_points(self, data1: Dict[float, List[Tuple[str, float]]], 
+                       data2: Dict[float, List[Tuple[str, float]]]) -> List[Dict]:
+        """比較兩個數據集的峰值點"""
+        peaks1 = self.find_peak_points(data1)[:5]  # 取前5高點
+        peaks2 = self.find_peak_points(data2)[:5]  # 取前5高點
+    
+        comparison_results = []
+        # 合併所有出現的波段
+        all_wavelengths = set([p['波段'] for p in peaks1 + peaks2])
+    
+        for wavelength in all_wavelengths:
+            result = {'波段': wavelength}
+        
+            # 在第一個數據集中尋找該波段
+            peak1 = next((p for p in peaks1 if p['波段'] == wavelength), None)
+            if peak1:
+                result['數據集1_最大值'] = peak1['最大值']
+                result['數據集1_時間點'] = peak1['時間點']
+            else:
+                result['數據集1_最大值'] = None
+                result['數據集1_時間點'] = None
+            
+            # 在第二個數據集中尋找該波段
+            peak2 = next((p for p in peaks2 if p['波段'] == wavelength), None)
+            if peak2:
+                result['數據集2_最大值'] = peak2['最大值']
+                result['數據集2_時間點'] = peak2['時間點']
+            else:
+                result['數據集2_最大值'] = None
+                result['數據集2_時間點'] = None
+            
+            # 計算差異
+            if peak1 and peak2:
+                result['差異'] = abs(peak1['最大值'] - peak2['最大值'])
+        
+            comparison_results.append(result)
+    
+        # 按差異大小排序（如果有差異的話）
+        return sorted(comparison_results, 
+                    key=lambda x: x.get('差異', 0) if x.get('差異') is not None else 0, 
+                    reverse=True)
