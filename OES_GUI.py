@@ -1,4 +1,5 @@
 import os
+from typing import List, Dict
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QLabel, QLineEdit, QFileDialog, 
                             QTextEdit, QGroupBox, QMessageBox)
@@ -8,7 +9,7 @@ from OES_analyze import OESAnalyzer  # 引入我們的分析類
 class OESAnalyzerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.analyzer = None  # 稍後初始化
+        self.analyzer = OESAnalyzer()  # 稍後初始化
         self.init_ui()
         
     def init_ui(self):
@@ -25,8 +26,32 @@ class OESAnalyzerGUI(QMainWindow):
         self.create_parameter_settings(layout)
         self.create_waveband_settings(layout)
         self.create_execute_button(layout)
+        self.create_peak_display(layout) 
         self.create_status_display(layout)
+    
+    def create_peak_display(self, parent_layout):
+        """創建峰值顯示區域"""
+        group = QGroupBox("最高點波段(由大到小)")
+        layout = QVBoxLayout()
         
+        self.peak_text = QTextEdit()
+        self.peak_text.setReadOnly(True)
+        self.peak_text.setMaximumHeight(100)  # 限制高度
+        layout.addWidget(self.peak_text)
+        
+        group.setLayout(layout)
+        parent_layout.addWidget(group)
+
+    def update_peak_display(self, peak_points: List[Dict]):
+        """更新峰值顯示"""
+        peak_info = "分析發現的主要峰值點：\n"
+        # 只顯示前5個最高點
+        for point in peak_points[:5]:
+            peak_info += (f"波段: {point['波段']:.1f} nm, "
+                         f"最大值: {point['最大值']:.2f}, "
+                         f"時間點: {point['時間點']}秒\n")
+        self.peak_text.setText(peak_info)
+    
     def create_file_selection(self, parent_layout):
         group = QGroupBox("檔案設定")
         layout = QVBoxLayout()
@@ -154,13 +179,17 @@ class OESAnalyzerGUI(QMainWindow):
                 initial_start=initial_start,
                 initial_end=initial_end
             )
-        
-            self.update_status(f"分析完成！\n結果已保存至：\n{excel_file}\n{specific_excel_file}")
-            QMessageBox.information(
-                self, 
-                "完成", 
-                f"分析已完成，結果已保存至：\n{excel_file}\n{specific_excel_file}"
+             # 找出並顯示峰值點
+            peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
+            self.update_peak_display(peak_points)
+
+            result_message = (
+                f"分析完成！結果已保存至：\n"
+                f"1. 光譜變化分析：{os.path.basename(excel_file)}\n"
+                f"2. 特定波段分析：{os.path.basename(specific_excel_file)}"
             )
+            self.update_status(result_message)
+            QMessageBox.information(self, "完成", result_message)
         
         except ValueError as e:
             QMessageBox.critical(self, "輸入錯誤", str(e))

@@ -1,15 +1,15 @@
 import os
 import pandas as pd
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional, Callable
 
 class OESAnalyzer:
     """OES光譜分析器"""
     
     def __init__(self, start_value: float = 195.0):
         self.start_value = start_value
-        self.all_values = {}
-        self.selected_files = []
-        self.status_callback = None
+        self.all_values: Dict[float, List[Tuple[str, float]]] = {}
+        self.selected_files: List[str] = []
+        self.status_callback: Optional[Callable[[str], None]] = None
         
     def set_status_callback(self, callback):
         """設置狀態更新回調函數"""
@@ -20,6 +20,25 @@ class OESAnalyzer:
         if self.status_callback:
             self.status_callback(message)
 
+    def find_peak_points(self, data: Dict[float, List[Tuple[str, float]]]) -> List[dict]:
+        """找出每個波段的最高點"""
+        peak_points = []
+        for value, measurements in data.items():
+            measurements_only = [m[1] for m in measurements]
+            max_value = max(measurements_only)
+            max_index = measurements_only.index(max_value)
+            file_name = measurements[max_index][0]
+            
+            peak_points.append({
+                '波段': value,
+                '最大值': max_value,
+                '檔案名': file_name,
+                '時間點': file_name.split('S')[-1].split('.')[0]
+            })
+        
+        # 按最大值排序
+        return sorted(peak_points, key=lambda x: x['最大值'], reverse=True)
+    
     def set_files(self, file_paths: List[str]):
         """設置要分析的文件列表"""
         self.selected_files = file_paths
