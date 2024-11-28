@@ -1,8 +1,9 @@
+import os
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QLabel, QLineEdit, QFileDialog, 
                             QTextEdit, QGroupBox, QMessageBox)
 from PyQt6.QtCore import Qt
-from OES_analyze import OESAnalysis  # 引入我們的分析類
+from OES_analyze import OESAnalyzer  # 引入我們的分析類
 
 class OESAnalyzerGUI(QMainWindow):
     def __init__(self):
@@ -125,7 +126,7 @@ class OESAnalyzerGUI(QMainWindow):
             if not folder_path:
                 QMessageBox.warning(self, "警告", "請選擇資料夾路徑")
                 return
-                
+            
             # 解析輸入值
             base_name = self.base_name.text()
             start_value = float(self.start_value.text())
@@ -133,22 +134,34 @@ class OESAnalyzerGUI(QMainWindow):
             initial_end = int(self.initial_end.text())
             wavebands = [float(x.strip()) for x in self.wavebands.text().split(",")]
             thresholds = [float(x.strip()) for x in self.thresholds.text().split(",")]
-            
-            # 創建分析器實例
-            self.analyzer = OESAnalysis(folder_path, base_name, start_value)
-            
+        
+            # 生成文件路徑列表
+            file_paths = [
+                os.path.join(folder_path, f"{base_name}{i:04d}.txt") 
+                for i in range(initial_start, initial_end + 1)
+            ]
+        
+            #  創建分析器實例並設置回調
+            self.analyzer = OESAnalyzer(start_value=start_value)
+            self.analyzer.set_status_callback(self.update_status)
+            self.analyzer.set_files(file_paths)
+        
             # 執行分析
             self.update_status("開始分析...")
-            self.analyzer.run_analysis(
+            excel_file, specific_excel_file = self.analyzer.analyze_and_export(
                 wavebands=wavebands,
                 thresholds=thresholds,
                 initial_start=initial_start,
                 initial_end=initial_end
             )
-            
-            self.update_status("分析完成！")
-            QMessageBox.information(self, "完成", "分析已完成，結果已保存")
-            
+        
+            self.update_status(f"分析完成！\n結果已保存至：\n{excel_file}\n{specific_excel_file}")
+            QMessageBox.information(
+                self, 
+                "完成", 
+                f"分析已完成，結果已保存至：\n{excel_file}\n{specific_excel_file}"
+            )
+        
         except ValueError as e:
             QMessageBox.critical(self, "輸入錯誤", str(e))
         except Exception as e:

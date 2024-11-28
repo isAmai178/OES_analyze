@@ -1,0 +1,9 @@
+2024-11-28 10:29:35,640 - INFO - Starting OES Analyzer application
+2024-11-28 10:29:35,767 - ERROR - Failed to start application: AA_EnableHighDpiScaling
+Traceback (most recent call last):
+  File "C:\Users\user\Desktop\金屬中心\code\OES分析軟體設計\main.py", line 37, in main
+    app.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\user\anaconda3\Lib\enum.py", line 784, in __getattr__
+    raise AttributeError(name) from None
+AttributeError: AA_EnableHighDpiScaling

@@ -1,13 +1,30 @@
 import os
 import pandas as pd
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple
 
-class FileReader:
-    """處理文件讀取的類別"""
+class OESAnalyzer:
+    """OES光譜分析器"""
+    
     def __init__(self, start_value: float = 195.0):
         self.start_value = start_value
+        self.all_values = {}
+        self.selected_files = []
+        self.status_callback = None
+        
+    def set_status_callback(self, callback):
+        """設置狀態更新回調函數"""
+        self.status_callback = callback
+        
+    def update_status(self, message: str):
+        """更新狀態"""
+        if self.status_callback:
+            self.status_callback(message)
 
-    def read_single_file(self, file_path: str) -> Dict[float, float]:
+    def set_files(self, file_paths: List[str]):
+        """設置要分析的文件列表"""
+        self.selected_files = file_paths
+
+    def read_values_by_line(self, file_path: str) -> Dict[float, float]:
         """讀取單個文件中的value和測量值"""
         values = {}
         try:
@@ -20,26 +37,20 @@ class FileReader:
                             if value >= self.start_value:
                                 values[value] = float(parts[1])
                         except ValueError:
-                            print(f"Skipping line due to ValueError: {line.strip()}")
+                            self.update_status(f"Skipping line due to ValueError: {line.strip()}")
         except FileNotFoundError:
-            print(f"The file at {file_path} was not found.")
+            self.update_status(f"The file at {file_path} was not found.")
         except Exception as e:
-            print(f"An error occurred: {e}")
+            self.update_status(f"An error occurred: {e}")
         return values
 
-class DataAnalyzer:
-    """處理數據分析的類別"""
-    def __init__(self, file_reader: FileReader):
-        self.file_reader = file_reader
-        self.all_values = {}
-
-    def gather_values(self, file_paths: List[str]) -> Dict:
+    def gather_values(self) -> Dict:
         """收集所有文件的數據"""
         self.all_values = {}
-        for file_path in file_paths:
-            file_values = self.file_reader.read_single_file(file_path)
+        for file_path in self.selected_files:
+            file_values = self.read_values_by_line(file_path)
             if not file_values:
-                print(f"No valid data found in {file_path}")
+                self.update_status(f"No valid data found in {file_path}")
                 continue
             for value, measurement in file_values.items():
                 if value not in self.all_values:
@@ -74,102 +85,62 @@ class DataAnalyzer:
                 significant_differences[value] = (min_measurement, max_measurement, largest_diff)
         return significant_differences
 
-class DataExporter:
-    """處理數據導出的類別"""
-    def __init__(self, output_directory: str):
-        self.output_directory = output_directory
-        self.excel_name = f"{output_directory}_spectral_dissociations.xlsx"
-        self.specific_excel_name = f"{output_directory}_specific_wavebands.xlsx"
+    def extend_range(self, current_index: int, range_size: int = 10) -> List[str]:
+        """計算前後range_size個文件的範圍"""
+        start_index = max(0, current_index - range_size)
+        end_index = min(len(self.selected_files) - 1, current_index + range_size)
+        return self.selected_files[start_index:end_index + 1]
 
-    def export_data(self, specific_data: List[Dict], significant_data: List[Dict], threshold: float):
-        """導出數據到Excel文件"""
-        # 導出特定波段數據
-        with pd.ExcelWriter(self.specific_excel_name) as writer:
-            df = pd.DataFrame(specific_data)
-            df.to_excel(writer, sheet_name=f"threshold_{threshold}", index=False)
+    def analyze_and_export(self, wavebands: List[float], thresholds: List[float], 
+                          initial_start: int, initial_end: int) -> Tuple[str, str]:
+        """執行分析並導出結果"""
+        try:
+            if not self.selected_files:
+                raise ValueError("No files selected for analysis")
 
-        # 導出顯著差異數據
-        with pd.ExcelWriter(self.excel_name) as writer:
-            df = pd.DataFrame(significant_data)
-            df.to_excel(writer, sheet_name=f"threshold_{threshold}", index=False)
+            # 收集數據
+            self.gather_values()
+            
+            # 準備Excel輸出
+            output_directory = os.path.basename(os.path.dirname(self.selected_files[0]))
+            excel_name = f"{output_directory}_spectral_dissociations.xlsx"
+            specific_excel_name = f"{output_directory}_specific_wavebands.xlsx"
 
-class OESAnalysis:
-    """主要分析類別"""
-    def __init__(self, relative_directory: str, base_name: str, 
-                 start_value: float = 195.0):
-        self.relative_directory = relative_directory
-        self.base_name = base_name
-        self.file_reader = FileReader(start_value)
-        self.data_analyzer = DataAnalyzer(self.file_reader)
-        self.data_exporter = DataExporter(os.path.basename(relative_directory))
+            # 處理特定波段數據
+            with pd.ExcelWriter(specific_excel_name) as specific_writer:
+                for threshold in thresholds:
+                    specific_differences = self.find_specific_wavebands_differences(wavebands, threshold)
+                    if specific_differences:
+                        specific_data = []
+                        for value, (min_measurement, max_measurement, largest_diff, _) in sorted(specific_differences.items()):
+                            specific_data.append({
+                                '波段': value,
+                                '最小值': min_measurement,
+                                '最大值': max_measurement,
+                                '差值': max_measurement - min_measurement
+                            })
+                        specific_df = pd.DataFrame(specific_data)
+                        specific_df.to_excel(specific_writer, sheet_name=f"threshold_{threshold}", index=False)
 
-    def generate_file_paths(self, start_index: int, end_index: int) -> List[str]:
-        """生成文件路徑列表"""
-        return [os.path.join(self.relative_directory, 
-                f"{self.base_name}{i:04d}.txt") 
-                for i in range(start_index, end_index + 1)]
+            # 處理所有波段數據
+            with pd.ExcelWriter(excel_name) as writer:
+                for threshold in thresholds:
+                    significant_differences = self.find_significant_differences(threshold)
+                    if significant_differences:
+                        data = []
+                        for value, (min_measurement, max_measurement, largest_diff) in sorted(significant_differences.items()):
+                            data.append({
+                                '波段': value,
+                                '最小值': min_measurement,
+                                '最大值': max_measurement,
+                                '差值': max_measurement - min_measurement
+                            })
+                        df = pd.DataFrame(data)
+                        df.to_excel(writer, sheet_name=f"threshold_{threshold}", index=False)
 
-    def run_analysis(self, wavebands: List[float], thresholds: List[float], 
-                    initial_start: int = 10, initial_end: int = 70):
-        """執行完整分析流程"""
-        # 生成初始文件路徑
-        initial_file_paths = self.generate_file_paths(initial_start, initial_end)
-        
-        # 收集數據
-        self.data_analyzer.gather_values(initial_file_paths)
+            self.update_status(f"Data written to {excel_name} and {specific_excel_name}")
+            return excel_name, specific_excel_name
 
-        for threshold in thresholds:
-            # 分析特定波段
-            specific_differences = self.data_analyzer.find_specific_wavebands_differences(
-                wavebands, threshold)
-
-            if specific_differences:
-                # 處理數據並導出
-                source_seconds = [int(data[3]) for data in specific_differences.values()]
-                min_source_second = min(source_seconds)
-
-                # 計算新範圍
-                min_second = max(0, min_source_second - 20)
-                max_second = min_source_second + 20
-
-                # 重新分析新範圍的數據
-                new_file_paths = self.generate_file_paths(min_second, max_second)
-                self.data_analyzer.gather_values(new_file_paths)
-                significant_differences = self.data_analyzer.find_significant_differences(threshold)
-
-                # 準備導出數據
-                specific_data = self._prepare_specific_data(specific_differences)
-                significant_data = self._prepare_significant_data(significant_differences)
-
-                # 導出數據
-                self.data_exporter.export_data(specific_data, significant_data, threshold)
-
-    def _prepare_specific_data(self, specific_differences: Dict) -> List[Dict]:
-        """準備特定波段的數據"""
-        return [{
-            '波段': value,
-            '最小值': data[0],
-            '最大值': data[1],
-            '變化量': data[1] - data[0]
-        } for value, data in sorted(specific_differences.items())]
-
-    def _prepare_significant_data(self, significant_differences: Dict) -> List[Dict]:
-        """準備顯著差異的數據"""
-        return [{
-            '波段': value,
-            '最小值': data[0],
-            '最大值': data[1],
-            '變化量': data[1] - data[0]
-        } for value, data in sorted(significant_differences.items())]
-
-if __name__ == "__main__":
-    # 設定參數
-    RELATIVE_DIRECTORY = r'..\光譜程式\製作軟體範本\OES製程光譜\0926\1130926_H2 Plasma_1.5torr_500w_9000sccm_TAP(5)-6'
-    BASE_NAME = "Spectrum_T2024-09-26-13-53-33_S"
-    START_VALUE = 195.0
-    WAVEBANDS = [486.0, 612.0, 656.0, 777.0]
-    THRESHOLDS = [250, 350, 450, 550]
-
-    # 創建分析實例並執行
-    analyzer = OESAnalysis(RELATIVE_DIRECTORY, BASE_NAME, START_VALUE)
-    analyzer.run_analysis(WAVEBANDS, THRESHOLDS)
+        except Exception as e:
+            self.update_status(f"Analysis failed: {str(e)}")
+            raise
