@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 from typing import List, Dict, Tuple, Optional, Callable
 
 class OESAnalyzer:
@@ -119,11 +121,33 @@ class OESAnalyzer:
 
             # 收集數據
             self.gather_values()
-            
+
             # 創建結果資料夾
             current_dir = os.path.dirname(os.path.abspath(__file__))
             output_directory = os.path.join(current_dir, "OES光譜分析結果")
             os.makedirs(output_directory, exist_ok=True)
+            self.update_status(f"將在以下目錄生成圖片：{output_directory}")
+
+            # 如果有之前的數據，為每個特定波段生成比較圖
+            if hasattr(self, 'previous_values'):
+                self.update_status(f"找到前一次分析的數據，包含 {len(self.previous_values)} 個波長點")
+                self.update_status("開始生成波長比較圖...")
+                for waveband in wavebands:
+                    output_path = self.plot_comparison(
+                        waveband, 
+                        self.previous_values, 
+                        self.all_values, 
+                        output_directory
+                    )
+                    if output_path:
+                        self.update_status(f"已生成圖片：{os.path.basename(output_path)}")
+            else:
+                self.update_status("未找到前一次分析的數據")
+                self.update_status("這是第一次分析，無法生成比較圖")
+
+            # 保存當前分析結果
+            self.previous_values = self.all_values.copy()
+            self.update_status(f"已保存當前分析結果，包含 {len(self.all_values)} 個波長點")
 
             # 準備Excel輸出
             input_folder_name = os.path.basename(os.path.dirname(self.selected_files[0]))
@@ -209,3 +233,53 @@ class OESAnalyzer:
         return sorted(comparison_results, 
                     key=lambda x: x.get('差異', 0) if x.get('差異') is not None else 0, 
                     reverse=True)
+
+    def plot_comparison(self, data1, data2, output_directory):
+        """為特定波長繪製比較圖"""
+        try:
+            # 找出每個數據集的最大值點
+            peaks1 = self.find_peak_points(data1)
+            peaks2 = self.find_peak_points(data2)
+
+            # 取得最大值的波長
+            max_peak1 = peaks1[0]  # 已經按最大值排序，所以第一個就是最大的
+            max_peak2 = peaks2[0]
+
+            # 準備數據
+            wavelengths1 = sorted(data1.keys())
+            wavelengths2 = sorted(data2.keys())
+            y1 = [max(m[1] for m in data1[w]) for w in wavelengths1]
+            y2 = [max(m[1] for m in data2[w]) for w in wavelengths2]
+        
+            # 創建圖表
+            plt.figure(figsize=(10, 6))
+        
+            # 繪製線條
+            plt.plot(wavelengths1, y1, 'gray', label='Before', linewidth=1)
+            plt.scatter(wavelengths2, y2, color='red', marker='s', s=10, label='After')
+        
+            # 標記最大值點
+            plt.annotate(f'Max: {max_peak1["最大值"]:.1f}',
+                        xy=(max_peak1['波段'], max_peak1['最大值']),
+                        xytext=(10, 10), textcoords='offset points')
+            plt.annotate(f'Max: {max_peak2["最大值"]:.1f}',
+                        xy=(max_peak2['波段'], max_peak2['最大值']),
+                        xytext=(10, -10), textcoords='offset points')
+        
+            # 設置圖表屬性
+            plt.xlabel('Wavelength(nm)')
+            plt.ylabel('Intensity(Cts)')
+            plt.title('Spectrum Comparison')
+            plt.legend()
+        
+            # 保存圖表
+            output_path = os.path.join(output_directory, 'max_peaks_comparison.png')
+            plt.savefig(output_path, dpi=300, bbox_inches='tight')
+            plt.close()
+        
+            self.update_status(f"已生成最大值比較圖：{output_path}")
+            return output_path
+        
+        except Exception as e:
+            self.update_status(f"生成比較圖時發生錯誤: {str(e)}")
+            return None

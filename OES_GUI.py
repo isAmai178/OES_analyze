@@ -4,12 +4,14 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QPushButton, QLabel, QLineEdit, QFileDialog, 
                             QTextEdit, QGroupBox, QMessageBox)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap
 from OES_analyze import OESAnalyzer  # 引入我們的分析類
 
 class OESAnalyzerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.analyzer = OESAnalyzer()  # 稍後初始化
+        self.previous_values = None
         self.init_ui()
         
     def init_ui(self):
@@ -26,9 +28,31 @@ class OESAnalyzerGUI(QMainWindow):
         self.create_parameter_settings(layout)
         self.create_waveband_settings(layout)
         self.create_execute_button(layout)
-        self.create_peak_display(layout) 
+        self.create_peak_display(layout)
+        # self.create_image_display(layout)  
         self.create_status_display(layout)
     
+    # def create_image_display(self, parent_layout):
+    #     """創建圖片顯示區域"""
+    #     group = QGroupBox("波長比較圖")
+    #     layout = QVBoxLayout()
+    
+    #     self.image_label = QLabel()
+    #     self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    #     self.image_label.setMinimumHeight(300)
+    #     layout.addWidget(self.image_label)
+    
+    #     group.setLayout(layout)
+    #     parent_layout.addWidget(group)
+
+    def update_image_display(self, image_path: str):
+        """更新圖片顯示"""
+        pixmap = QPixmap(image_path)
+        scaled_pixmap = pixmap.scaled(self.image_label.size(), 
+                                    Qt.AspectRatioMode.KeepAspectRatio,
+                                    Qt.TransformationMode.SmoothTransformation)
+        self.image_label.setPixmap(scaled_pixmap)
+
     def create_peak_display(self, parent_layout):
         """創建峰值顯示區域"""
         group = QGroupBox("峰值比較")
@@ -193,15 +217,33 @@ class OESAnalyzerGUI(QMainWindow):
             )
              # 找出並顯示峰值點
             peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
-            self.update_peak_display(peak_points)
-            # 如果有之前的分析結果，進行比較
-            if hasattr(self, 'previous_values'):
+
+           # 檢查是否有前一次的分析結果
+            if self.previous_values is not None:
+                self.update_status("找到前一次分析數據，開始生成比較圖...")
                 comparison_results = self.analyzer.compare_peak_points(
                     self.previous_values, 
                     self.analyzer.all_values)
                 self.update_peak_display(peak_points, comparison_results)
+            
+                # 生成最大值比較圖
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                output_directory = os.path.join(current_dir, "OES光譜分析結果")
+                os.makedirs(output_directory, exist_ok=True)
+            
+                # 修正函數調用
+                self.analyzer.plot_comparison(
+                    self.previous_values,  # data1
+                    self.analyzer.all_values,  # data2
+                    output_directory  # output_directory
+                )
             else:
+                self.update_status("這是第一次分析，保存結果供下次比較")
                 self.update_peak_display(peak_points)
+        
+            # 保存當前分析結果供下次比較
+            self.previous_values = self.analyzer.all_values.copy()
+            self.update_status(f"已保存當前分析結果，包含 {len(self.analyzer.all_values)} 個波長點")
         
             # 保存當前分析結果供下次比較
             self.previous_values = self.analyzer.all_values.copy()
