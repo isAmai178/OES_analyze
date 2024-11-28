@@ -69,8 +69,8 @@ class OESAnalyzerGUI(QMainWindow):
         group.setLayout(layout)
         parent_layout.addWidget(group)
     
-    def plot_spectrum(self, peak_points: List[dict], analysis_time: str):
-        """繪製光譜圖並標記最高點，同時保存為JPG"""
+    def plot_spectrum(self, peak_points: List[dict]):
+        """繪製光譜圖並標記最高點"""
         self.figure.clear()
         ax = self.figure.add_subplot(111)
         
@@ -109,38 +109,6 @@ class OESAnalyzerGUI(QMainWindow):
         ax.legend()
         
         self.canvas.draw()
-        # 保存圖片
-        try:
-             # 創建輸出目錄
-            output_dir = self.create_output_directory()
-            # 獲取輸出目錄（使用第一個文件的目錄）
-            output_name = os.path.join(output_dir, f'spectrum_analysis_{analysis_time}.png')
-        
-            # 保存為高質量JPG
-            self.figure.savefig(output_name, 
-                                format='jpg',
-                                dpi=300,  # 高解析度
-                                bbox_inches='tight')  
-        
-            self.update_status(f"圖片已保存至：{output_name}")
-            return output_name
-        except Exception as e:
-            self.update_status(f"保存圖片時發生錯誤：{str(e)}")
-            return None
-    
-    def create_output_directory(self):
-        """創建輸出資料夾"""
-        # 獲取當前程式所在的目錄
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        # 創建輸出資料夾路徑
-        output_dir = os.path.join(current_dir, "OES光譜分析結果")
-    
-        # 如果資料夾不存在，則創建它
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-            self.update_status("創建輸出資料夾：" + output_dir)
-    
-        return output_dir
     
     def create_file_selection(self, parent_layout):
         group = QGroupBox("檔案設定")
@@ -242,13 +210,6 @@ class OESAnalyzerGUI(QMainWindow):
                 QMessageBox.warning(self, "警告", "請選擇資料夾路徑")
                 return
             
-            # 創建時間戳，用於檔案命名
-            from datetime import datetime
-            analysis_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-            # 創建輸出目錄
-            output_dir = self.create_output_directory()
-
             # 解析輸入值
             base_name = self.base_name.text()
             start_value = float(self.start_value.text())
@@ -267,39 +228,26 @@ class OESAnalyzerGUI(QMainWindow):
             self.analyzer = OESAnalyzer(start_value=start_value)
             self.analyzer.set_status_callback(self.update_status)
             self.analyzer.set_files(file_paths)
-
+        
             # 執行分析
             self.update_status("開始分析...")
-            
-            # 找出峰值點並更新顯示
-            peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
-            self.update_peak_display(peak_points)
-        
-            # 繪製並保存波型圖
-            spectrum_file = self.plot_spectrum(peak_points, analysis_time)
-
-            # 保存Excel文件
-            excel_name = f'spectral_dissociations_{analysis_time}.xlsx'
-            specific_excel_name = f'specific_wavebands_{analysis_time}.xlsx'
-        
-            excel_path = os.path.join(output_dir, excel_name)
-            specific_excel_path = os.path.join(output_dir, specific_excel_name)
-            
             excel_file, specific_excel_file = self.analyzer.analyze_and_export(
                 wavebands=wavebands,
                 thresholds=thresholds,
                 initial_start=initial_start,
-                initial_end=initial_end,
-                excel_path=excel_path,
-                specific_excel_path=specific_excel_path
-        )
+                initial_end=initial_end
+            )
+             # 找出並顯示峰值點
+            peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
+            self.update_peak_display(peak_points)
 
+            # 繪製波型圖
+            self.plot_spectrum(peak_points)
+            
             result_message = (
                 f"分析完成！結果已保存至：\n"
-                f"oes光譜分析結果資料夾中：\n"
-                f"1. 光譜變化分析：{excel_name}\n"
-                f"2. 特定波段分析：{specific_excel_name}\n"
-                f"3. 波型圖：spectrum_analysis_{analysis_time}.png"
+                f"1. 光譜變化分析：{os.path.basename(excel_file)}\n"
+                f"2. 特定波段分析：{os.path.basename(specific_excel_file)}"
             )
             self.update_status(result_message)
             QMessageBox.information(self, "完成", result_message)
