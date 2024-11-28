@@ -5,11 +5,14 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTextEdit, QGroupBox, QMessageBox)
 from PyQt6.QtCore import Qt
 from OES_analyze import OESAnalyzer  # 引入我們的分析類
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 class OESAnalyzerGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.analyzer = OESAnalyzer()  # 稍後初始化
+        self.analyzer = None  # 稍後初始化
         self.init_ui()
         
     def init_ui(self):
@@ -28,6 +31,7 @@ class OESAnalyzerGUI(QMainWindow):
         self.create_execute_button(layout)
         self.create_peak_display(layout) 
         self.create_status_display(layout)
+        self.create_plot_area(layout)  # 新增圖表區域
     
     def create_peak_display(self, parent_layout):
         """創建峰值顯示區域"""
@@ -51,6 +55,60 @@ class OESAnalyzerGUI(QMainWindow):
                          f"最大值: {point['最大值']:.2f}, "
                          f"時間點: {point['時間點']}秒\n")
         self.peak_text.setText(peak_info)
+    
+    def create_plot_area(self, parent_layout):
+        """創建圖表顯示區域"""
+        group = QGroupBox("波型圖")
+        layout = QVBoxLayout()
+        
+        # 創建matplotlib圖表
+        self.figure = Figure(figsize=(8, 4))
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+        
+        group.setLayout(layout)
+        parent_layout.addWidget(group)
+    
+    def plot_spectrum(self, peak_points: List[dict]):
+        """繪製光譜圖並標記最高點"""
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        
+        # 獲取波長和強度數據
+        wavelengths = []
+        intensities = []
+        for value, measurements in self.analyzer.all_values.items():
+            wavelengths.append(value)
+            # 使用最後一個測量值
+            intensities.append(measurements[-1][1])
+        
+        # 繪製主要曲線
+        ax.plot(wavelengths, intensities, 'b-', label='Spectrum', alpha=0.6)
+        
+        # 標記前5個最高點
+        top_5_peaks = peak_points[:5]
+        peak_wavelengths = [p['波段'] for p in top_5_peaks]
+        peak_intensities = [p['最大值'] for p in top_5_peaks]
+        
+        ax.scatter(peak_wavelengths, peak_intensities, color='red', s=100, 
+                  marker='o', label='Peak Points')
+        
+        # 為每個峰值添加標籤
+        for i, (wave, intensity) in enumerate(zip(peak_wavelengths, peak_intensities)):
+            ax.annotate(f'Peak {i+1}\n{wave:.1f}nm\n{intensity:.1f}',
+                       (wave, intensity),
+                       xytext=(10, 10),
+                       textcoords='offset points',
+                       bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
+                       arrowprops=dict(arrowstyle='->'))
+        
+        ax.set_xlabel('Wavelength (nm)')
+        ax.set_ylabel('Intensity')
+        ax.set_title('Spectrum Analysis with Peak Points')
+        ax.grid(True)
+        ax.legend()
+        
+        self.canvas.draw()
     
     def create_file_selection(self, parent_layout):
         group = QGroupBox("檔案設定")
@@ -183,6 +241,9 @@ class OESAnalyzerGUI(QMainWindow):
             peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
             self.update_peak_display(peak_points)
 
+            # 繪製波型圖
+            self.plot_spectrum(peak_points)
+            
             result_message = (
                 f"分析完成！結果已保存至：\n"
                 f"1. 光譜變化分析：{os.path.basename(excel_file)}\n"
