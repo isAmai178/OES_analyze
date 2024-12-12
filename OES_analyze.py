@@ -164,7 +164,7 @@ class OESAnalysis:
 
 if __name__ == "__main__":
     # 設定參數
-    RELATIVE_DIRECTORY = r'..\光譜程式\製作軟體範本\OES製程光譜\0926\1130926_H2 Plasma_1.5torr_500w_9000sccm_TAP(5)-6'
+    RELATIVE_DIRECTORY = r'..\電漿光譜\1107H2\電漿0926-500~3000current模式0~6PIV\OES光譜\1130926_H2 Plasma_1.5torr_500w_9000sccm_TAP(5)-6'
     BASE_NAME = "Spectrum_T2024-09-26-13-53-33_S"
     START_VALUE = 195.0
     WAVEBANDS = [486.0, 612.0, 656.0, 777.0]
