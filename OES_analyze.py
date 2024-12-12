@@ -253,10 +253,16 @@ class OESAnalyzer:
         
             # 創建圖表
             plt.figure(figsize=(10, 6))
-        
+
+            # 添加最大值波段信息到標題
+            title_text = (f'Spectrum Comparison\n'
+                        f'Before Max: {max_peak1["波段"]:.1f}nm, '
+                        f'After Max: {max_peak2["波段"]:.1f}nm')
+            plt.title(title_text)
+            
             # 繪製線條
-            plt.plot(wavelengths1, y1, 'gray', label='Before', linewidth=1)
-            plt.scatter(wavelengths2, y2, color='red', marker='s', s=10, label='After')
+            plt.plot(wavelengths1, y1, color='Blue', label='Before', linewidth=1)
+            plt.plot(wavelengths2, y2, color='red', label='After', linewidth=1)
         
             # 標記最大值點
             plt.annotate(f'Max: {max_peak1["最大值"]:.1f}',
@@ -269,7 +275,7 @@ class OESAnalyzer:
             # 設置圖表屬性
             plt.xlabel('Wavelength(nm)')
             plt.ylabel('Intensity(Cts)')
-            plt.title('Spectrum Comparison')
+            # plt.title('Spectrum Comparison')
             plt.legend()
         
             # 保存圖表
