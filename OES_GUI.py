@@ -119,14 +119,14 @@ class OESAnalyzerGUI(QMainWindow):
         # 起始值設定
         start_layout = QHBoxLayout()
         self.start_value = QLineEdit("195.0")
-        start_layout.addWidget(QLabel("起始值:"))
+        start_layout.addWidget(QLabel("波段起始值:"))
         start_layout.addWidget(self.start_value)
         
         # 初始範圍設定
         range_layout = QHBoxLayout()
         self.initial_start = QLineEdit("10")
         self.initial_end = QLineEdit("70")
-        range_layout.addWidget(QLabel("初始範圍:"))
+        range_layout.addWidget(QLabel("初始範圍(實驗秒數):"))
         range_layout.addWidget(self.initial_start)
         range_layout.addWidget(QLabel("到"))
         range_layout.addWidget(self.initial_end)
