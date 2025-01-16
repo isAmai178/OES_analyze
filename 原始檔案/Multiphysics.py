@@ -3,20 +3,21 @@ import pandas as pd
 import numpy as np
 
 # 設定資料夾路徑
-folder_path = '電漿光譜/1107H2/電漿0926-500~3000current模式0~6PIV/\
+folder_path = '../電漿光譜/1107H2/電漿0926-500~3000current模式0~6PIV/\
 1130926_H2 Plasma_1.5torr_500w_9000sccm_TAP(6)-7/'
-
+output_path = '分析結果/'
 # 定義要分析的檔案和對應的欄位
 files_config = {
     'RF.csv': ['Power', 'Voltage', 'Current'],
     'BgCgTemp.csv': ['BG', 'CG'],
     'MFC.csv': ['H2(sccm)']
 }
+threshold = 200  # Power的臨界值
 
 # 讀取RF檔案並找出激發時間
 rf_df = pd.read_csv(os.path.join(folder_path, 'RF.csv'))
 time_series = rf_df['Power'].values
-threshold = 200  # Power的臨界值
+
 
 # 找出激發和結束時間
 activated = False
@@ -58,5 +59,7 @@ for file_name, columns in files_config.items():
     # 為每個檔案創建獨立的DataFrame並儲存
     results_df = pd.DataFrame(file_results)
     output_name = f'{file_name[:-4]}.xlsx'
-    results_df.to_excel(output_name)
+    # 使用os.path.join組合完整的輸出路徑
+    full_output_path = os.path.join(output_path, output_name)
+    results_df.to_excel(full_output_path)
     print(f"已儲存 {output_name}")
