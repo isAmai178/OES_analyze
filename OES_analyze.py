@@ -111,87 +111,7 @@ class OESAnalyzer:
         start_index = max(0, current_index - range_size)
         end_index = min(len(self.selected_files) - 1, current_index + range_size)
         return self.selected_files[start_index:end_index + 1]
-
-    def analyze_and_export(self, wavebands: List[float], thresholds: List[float], 
-                          initial_start: int, initial_end: int) -> Tuple[str, str]:
-        """執行分析並導出結果"""
-        try:
-            if not self.selected_files:
-                raise ValueError("No files selected for analysis")
-
-            # 收集數據
-            self.gather_values()
-
-            # 創建結果資料夾
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            output_directory = os.path.join(current_dir, "OES光譜分析結果")
-            os.makedirs(output_directory, exist_ok=True)
-            self.update_status(f"將在以下目錄生成圖片：{output_directory}")
-
-            # 如果有之前的數據，為每個特定波段生成比較圖
-            if hasattr(self, 'previous_values'):
-                self.update_status(f"找到前一次分析的數據，包含 {len(self.previous_values)} 個波長點")
-                self.update_status("開始生成波長比較圖...")
-                for waveband in wavebands:
-                    output_path = self.plot_comparison(
-                        waveband, 
-                        self.previous_values, 
-                        self.all_values, 
-                        output_directory
-                    )
-                    if output_path:
-                        self.update_status(f"已生成圖片：{os.path.basename(output_path)}")
-            else:
-                self.update_status("未找到前一次分析的數據")
-                self.update_status("這是第一次分析，無法生成比較圖")
-
-            # 保存當前分析結果
-            self.previous_values = self.all_values.copy()
-            self.update_status(f"已保存當前分析結果，包含 {len(self.all_values)} 個波長點")
-
-            # 準備Excel輸出
-            input_folder_name = os.path.basename(os.path.dirname(self.selected_files[0]))
-            excel_name = os.path.join(output_directory, f"{input_folder_name}_spectral_dissociations.xlsx")
-            specific_excel_name = os.path.join(output_directory, f"{input_folder_name}_specific_wavebands.xlsx")
-
-            # 處理特定波段數據
-            with pd.ExcelWriter(specific_excel_name) as specific_writer:
-                for threshold in thresholds:
-                    specific_differences = self.find_specific_wavebands_differences(wavebands, threshold)
-                    if specific_differences:
-                        specific_data = []
-                        for value, (min_measurement, max_measurement, largest_diff, _) in sorted(specific_differences.items()):
-                            specific_data.append({
-                                '波段': value,
-                                '最小值': min_measurement,
-                                '最大值': max_measurement,
-                                '差值': max_measurement - min_measurement
-                            })
-                        specific_df = pd.DataFrame(specific_data)
-                        specific_df.to_excel(specific_writer, sheet_name=f"threshold_{threshold}", index=False)
-
-            # 處理所有波段數據
-            with pd.ExcelWriter(excel_name) as writer:
-                for threshold in thresholds:
-                    significant_differences = self.find_significant_differences(threshold)
-                    if significant_differences:
-                        data = []
-                        for value, (min_measurement, max_measurement, largest_diff) in sorted(significant_differences.items()):
-                            data.append({
-                                '波段': value,
-                                '最小值': min_measurement,
-                                '最大值': max_measurement,
-                                '差值': max_measurement - min_measurement
-                            })
-                        df = pd.DataFrame(data)
-                        df.to_excel(writer, sheet_name=f"threshold_{threshold}", index=False)
-
-            self.update_status(f"Data written to {excel_name} and {specific_excel_name}")
-            return excel_name, specific_excel_name
-
-        except Exception as e:
-            self.update_status(f"Analysis failed: {str(e)}")
-            raise
+    
     def compare_peak_points(self, data1: Dict[float, List[Tuple[str, float]]], 
                        data2: Dict[float, List[Tuple[str, float]]]) -> List[Dict]:
         """比較兩個數據集的峰值點"""
@@ -233,53 +153,54 @@ class OESAnalyzer:
         return sorted(comparison_results, 
                     key=lambda x: x.get('差異', 0) if x.get('差異') is not None else 0, 
                     reverse=True)
-
-    def plot_comparison(self, data1, data2, output_directory):
-        """為特定波長繪製比較圖"""
+    
+    def allSpectrum_plot(self, data1, skip_range_nm, output_directory, file_name):
+        """繪製全波段圖形並標記出最高波段"""
         try:
             # 找出每個數據集的最大值點
             peaks1 = self.find_peak_points(data1)
-            peaks2 = self.find_peak_points(data2)
 
             # 取得最大值的波長
             max_peak1 = peaks1[0]  # 已經按最大值排序，所以第一個就是最大的
-            max_peak2 = peaks2[0]
-
+            sorted_peaks = sorted(peaks1, key=lambda x:x['最大值'], reverse=True)
             # 準備數據
             wavelengths1 = sorted(data1.keys())
-            wavelengths2 = sorted(data2.keys())
             y1 = [max(m[1] for m in data1[w]) for w in wavelengths1]
-            y2 = [max(m[1] for m in data2[w]) for w in wavelengths2]
         
             # 創建圖表
             plt.figure(figsize=(10, 6))
 
             # 添加最大值波段信息到標題
-            title_text = (f'Spectrum Comparison\n'
-                        f'Before Max: {max_peak1["波段"]:.1f}nm, '
-                        f'After Max: {max_peak2["波段"]:.1f}nm')
+            title_text = (f'ALL_Spectrum & Higher Peaks \n'
+                        f'Max_peak: {max_peak1["波段"]:.1f}nm')
             plt.title(title_text)
             
             # 繪製線條
-            plt.plot(wavelengths1, y1, color='Blue', label='Before', linewidth=1)
-            plt.plot(wavelengths2, y2, color='red', label='After', linewidth=1)
-        
-            # 標記最大值點
-            plt.annotate(f'Max: {max_peak1["最大值"]:.1f}',
-                        xy=(max_peak1['波段'], max_peak1['最大值']),
-                        xytext=(10, 10), textcoords='offset points')
-            plt.annotate(f'Max: {max_peak2["最大值"]:.1f}',
-                        xy=(max_peak2['波段'], max_peak2['最大值']),
-                        xytext=(10, -10), textcoords='offset points')
-        
+            plt.plot(wavelengths1, y1, color='red', label='Highest_data', linewidth=1)
+
+            marked_peaks =[]
+            for peak in sorted_peaks:
+                if len(marked_peaks) >= 3:
+                    break
+                
+                 # 檢查是否需要跳過範圍
+                if not any(abs(peak['波段'] - marked_peak['波段']) <= skip_range_nm for marked_peak in marked_peaks):
+                    plt.annotate(f'Peak: {peak["波段"]:.1f} nm, intensity: {peak["最大值"]:.1f}',
+                                xy=(peak['波段'], peak['最大值']),
+                                xytext=(7, 7), textcoords='offset points')
+                    marked_peaks.append(peak)
+            x_ticks = [peak['波段'] for peak in marked_peaks]
+            plt.xticks(ticks=x_ticks, labels=[f'{wavelengths1:.1f}nm' for wavelengths1 in x_ticks], rotation=45)        
+            
             # 設置圖表屬性
             plt.xlabel('Wavelength(nm)')
             plt.ylabel('Intensity(Cts)')
-            # plt.title('Spectrum Comparison')
             plt.legend()
-        
+            #建構檔案名稱
+            output_file_name = f"{file_name}_allspectrum_highestPeaks.png"
+
             # 保存圖表
-            output_path = os.path.join(output_directory, 'max_peaks_comparison.png')
+            output_path = os.path.join(output_directory, output_file_name)
             plt.savefig(output_path, dpi=300, bbox_inches='tight')
             plt.close()
         
@@ -289,3 +210,66 @@ class OESAnalyzer:
         except Exception as e:
             self.update_status(f"生成比較圖時發生錯誤: {str(e)}")
             return None
+
+    def analyze_and_export(self, wavebands: List[float], thresholds: List[float], 
+                          initial_start: int, initial_end: int, skip_range_nm: float) -> Tuple[str, str]:
+        """執行分析並導出結果"""
+        try:
+            if not self.selected_files:
+                raise ValueError("未讀取到檔案進行分析")
+
+            # 收集數據
+            self.gather_values()
+
+            # 創建結果資料夾
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            output_directory = os.path.join(current_dir, "OES光譜分析結果")
+            os.makedirs(output_directory, exist_ok=True)
+            self.update_status(f"將在以下目錄生成分析結果：{output_directory}")
+
+            # 保存當前分析結果
+            self.previous_values = self.all_values.copy()
+            self.update_status(f"已保存當前分析結果，包含 {len(self.all_values)} 個波長點")
+            experiment_file_name = os.path.splitext(os.path.basename(self.selected_files[0]))[0] #將分析檔案名稱讀取下來
+            base_name = experiment_file_name.split('_')[1]  # 取得T2024-09-26
+
+            # 處理特定波段數據
+            specific_excel_name = os.path.join(output_directory, f"{base_name}_特定波段解離情況.xlsx")
+            with pd.ExcelWriter(specific_excel_name) as specific_writer:
+                for threshold in thresholds:
+                    specific_differences = self.find_specific_wavebands_differences(wavebands, threshold)
+                    if specific_differences:
+                        specific_data = []
+                        for value, (min_measurement, max_measurement, largest_diff, _) in sorted(specific_differences.items()):
+                            specific_data.append({
+                                '波段': value,
+                                '最小值': min_measurement,
+                                '最大值': max_measurement,
+                                '差值': max_measurement - min_measurement
+                            })
+                        specific_df = pd.DataFrame(specific_data)
+                        specific_df.to_excel(specific_writer, sheet_name=f"threshold_{threshold}", index=False)
+
+            # 處理所有波段數據
+            excel_name = os.path.join(output_directory, f"{base_name}_全部解離波段.xlsx")
+            with pd.ExcelWriter(excel_name) as writer:
+                for threshold in thresholds:
+                    significant_differences = self.find_significant_differences(threshold)
+                    if significant_differences:
+                        data = []
+                        for value, (min_measurement, max_measurement, largest_diff) in sorted(significant_differences.items()):
+                            data.append({
+                                '波段': value,
+                                '最小值': min_measurement,
+                                '最大值': max_measurement,
+                                '差值': max_measurement - min_measurement
+                            })
+                        df = pd.DataFrame(data)
+                        df.to_excel(writer, sheet_name=f"threshold_{threshold}", index=False)
+
+            self.update_status(f"已將分析寫入 {excel_name} 與 {specific_excel_name}")
+            return excel_name, specific_excel_name
+        
+        except Exception as e:
+            self.update_status(f"Analysis failed: {str(e)}")
+            raise

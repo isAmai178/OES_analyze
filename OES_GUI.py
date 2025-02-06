@@ -131,8 +131,15 @@ class OESAnalyzerGUI(QMainWindow):
         range_layout.addWidget(QLabel("到"))
         range_layout.addWidget(self.initial_end)
         
+        # 添加跳過範圍設定
+        skip_layout = QHBoxLayout()
+        self.skip_range = QLineEdit("10")
+        skip_layout.addWidget(QLabel("峰值跳過範圍(nm):"))
+        skip_layout.addWidget(self.skip_range)
+        
         layout.addLayout(start_layout)
         layout.addLayout(range_layout)
+        layout.addLayout(skip_layout)
         group.setLayout(layout)
         parent_layout.addWidget(group)
         
@@ -181,6 +188,7 @@ class OESAnalyzerGUI(QMainWindow):
         )
         
     def execute_analysis(self):
+        # 點下按鈕會開始執行分析
         try:
             # 獲取所有輸入值
             folder_path = self.folder_path.text()
@@ -195,14 +203,16 @@ class OESAnalyzerGUI(QMainWindow):
             initial_end = int(self.initial_end.text())
             wavebands = [float(x.strip()) for x in self.wavebands.text().split(",")]
             thresholds = [float(x.strip()) for x in self.thresholds.text().split(",")]
-        
+            skip_range_nm = float(self.skip_range.text())  # 新增：獲取跳過範圍
+
             # 生成文件路徑列表
             file_paths = [
                 os.path.join(folder_path, f"{base_name}{i:04d}.txt") 
                 for i in range(initial_start, initial_end + 1)
             ]
-        
-            #  創建分析器實例並設置回調
+            file_name = base_name.split('_')[1]  # 取得T2024-09-26
+            
+            # 創建分析器並設置回調
             self.analyzer = OESAnalyzer(start_value=start_value)
             self.analyzer.set_status_callback(self.update_status)
             self.analyzer.set_files(file_paths)
@@ -213,48 +223,43 @@ class OESAnalyzerGUI(QMainWindow):
                 wavebands=wavebands,
                 thresholds=thresholds,
                 initial_start=initial_start,
-                initial_end=initial_end
+                initial_end=initial_end,
+                skip_range_nm=skip_range_nm  # 新增：傳遞跳過範圍
             )
-             # 找出並顯示峰值點
+            
+            # 找出並顯示峰值點
             peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
 
            # 檢查是否有前一次的分析結果
-            if self.previous_values is not None:
-                self.update_status("找到前一次分析數據，開始生成比較圖...")
-                comparison_results = self.analyzer.compare_peak_points(
-                    self.previous_values, 
-                    self.analyzer.all_values)
-                self.update_peak_display(peak_points, comparison_results)
-            
-                # 生成最大值比較圖
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                output_directory = os.path.join(current_dir, "OES光譜分析結果")
-                os.makedirs(output_directory, exist_ok=True)
-            
-                # 修正函數調用
-                self.analyzer.plot_comparison(
-                    self.previous_values,  # data1
-                    self.analyzer.all_values,  # data2
-                    output_directory  # output_directory
-                )
-            else:
-                self.update_status("這是第一次分析，保存結果供下次比較")
-                self.update_peak_display(peak_points)
+            self.update_status("開始生成全波段圖...")
+            # 生成全波段圖
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            output_directory = os.path.join(current_dir, "OES光譜分析結果")
+            os.makedirs(output_directory, exist_ok=True)
+
+            # 生成全波段圖
+            output_path = self.analyzer.allSpectrum_plot(
+                self.analyzer.all_values,  # data1
+                float(self.skip_range.text()),  # skip_nm
+                output_directory,  # output_directory
+                file_name
+            )
+
+            self.update_peak_display(peak_points)
+
+            # # 保存當前分析結果供下次比較
+            # self.previous_values = self.analyzer.all_values.copy()
+            # self.update_status(f"已保存當前分析結果，包含 {len(self.analyzer.all_values)} 個波長點")
         
-            # 保存當前分析結果供下次比較
-            self.previous_values = self.analyzer.all_values.copy()
-            self.update_status(f"已保存當前分析結果，包含 {len(self.analyzer.all_values)} 個波長點")
-        
-            # 保存當前分析結果供下次比較
-            self.previous_values = self.analyzer.all_values.copy()
             result_message = (
                 f"分析完成！結果已保存至：\n"
                 f"1. 光譜變化分析：{os.path.basename(excel_file)}\n"
-                f"2. 特定波段分析：{os.path.basename(specific_excel_file)}"
+                f"2. 特定波段分析：{os.path.basename(specific_excel_file)}\n"
+                f"3. 全波段圖與前三強波段：{os.path.basename(output_path)}"
             )
             self.update_status(result_message)
             QMessageBox.information(self, "完成", result_message)
-        
+            
         except ValueError as e:
             QMessageBox.critical(self, "輸入錯誤", str(e))
         except Exception as e:
