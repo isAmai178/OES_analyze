@@ -1,13 +1,3 @@
-#!/usr/bin/env python3
-"""
-Plasma Analyzer GUI Application
-This module provides a graphical user interface for the Plasma Analyzer tool.
-
-Author: [Your Name]
-Date: [Current Date]
-Version: 1.0.0
-"""
-
 import sys
 import os
 import pandas as pd
@@ -19,7 +9,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QFileDialog, QSpinBox,
     QTableWidget, QTableWidgetItem, QMessageBox, QComboBox,
-    QGroupBox, QGridLayout
+    QGroupBox, QGridLayout, QMenu, QDialog, QDialogButtonBox
 )
 from PyQt6.QtCore import Qt
 from Multiphysics import PlasmaAnalyzer
@@ -100,11 +90,77 @@ class FileAttributeSelector(QGroupBox):
 
     def _on_selection_changed(self, text: str) -> None:
         """Handle combo box selection changes."""
-        self.add_btn.setEnabled(text and text not in self.selected_attributes)
+        enabled = bool(text) and text not in self.selected_attributes
+        self.add_btn.setEnabled(enabled)
 
     def get_selected_attributes(self) -> List[str]:
         """Get the list of selected attributes."""
         return self.selected_attributes
+
+class SectionInputDialog(QDialog):
+    """對話框用於輸入區段數"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("設定區段數")
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout()
+
+        # 區段數輸入
+        input_layout = QHBoxLayout()
+        self.section_spin = QSpinBox()
+        self.section_spin.setRange(2, 10)  # 最少2個區段，最多10個
+        self.section_spin.setValue(3)
+        input_layout.addWidget(QLabel("請輸入要分析的區段數:"))
+        input_layout.addWidget(self.section_spin)
+
+        # 確認和取消按鈕
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | 
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+
+        layout.addLayout(input_layout)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
+class SectionResultDialog(QDialog):
+    """對話框用於顯示區段分析結果"""
+    def __init__(self, results, parent=None):
+        super().__init__(parent)
+        self.results = results
+        self.setWindowTitle("區段分析結果")
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout()
+
+        # 創建表格
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(['區段', '平均值', '標準差', '穩定度'])
+
+        # 填充數據
+        self.table.setRowCount(len(self.results))
+        for i, (section, values) in enumerate(self.results.items()):
+            self.table.setItem(i, 0, QTableWidgetItem(f"區段 {section}"))
+            self.table.setItem(i, 1, QTableWidgetItem(f"{values['平均值']:.2f}"))
+            self.table.setItem(i, 2, QTableWidgetItem(f"{values['標準差']:.2f}"))
+            self.table.setItem(i, 3, QTableWidgetItem(f"{values['穩定度']:.2f}"))
+
+        # 調整表格大小
+        self.table.resizeColumnsToContents()
+        
+        # 添加關閉按鈕
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(self.reject)
+
+        layout.addWidget(self.table)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
 
 class PlasmaAnalyzerGUI(QMainWindow):
     """Main window class for the Plasma Analyzer GUI application."""
@@ -115,7 +171,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
     FILE_TYPES = ['RF.csv', 'BgCgTemp.csv', 'MFC.csv']
     
     def __init__(self):
-        """Initialize the main window and setup UI components."""
+        """初始化主畫面和UI設定元件"""
         super().__init__()
         self.analyzer = PlasmaAnalyzer()
         self.file_selectors: Dict[str, FileAttributeSelector] = {}
@@ -123,7 +179,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
         logger.info("Plasma Analyzer GUI initialized")
 
     def _init_ui(self) -> None:
-        """Initialize all UI components."""
+        """初始化所有元件."""
         self._setup_window()
         self._create_main_layout()
         self._setup_file_section()
@@ -138,7 +194,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
         self.setGeometry(*self.WINDOW_GEOMETRY)
 
     def _create_main_layout(self) -> None:
-        """Create and set the main layout."""
+        """主介面創建."""
         self.main_widget = QWidget()
         self.setCentralWidget(self.main_widget)
         self.main_layout = QVBoxLayout(self.main_widget)
@@ -146,7 +202,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
         self.main_layout.setContentsMargins(10, 10, 10, 10)
 
     def _setup_file_section(self) -> None:
-        """Setup the file selection section."""
+        """設定資料夾路徑區"""
         file_group = QHBoxLayout()
         
         self.path_edit = QLineEdit()
@@ -163,7 +219,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
         self.main_layout.addLayout(file_group)
 
     def _setup_parameters_section(self) -> None:
-        """Setup the parameters input section."""
+        """設定參數輸入區"""
         params_layout = QVBoxLayout()
         
         params_title = QLabel('參數設定')
@@ -195,7 +251,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
         self.main_layout.addLayout(attributes_layout)
 
     def _setup_analysis_section(self) -> None:
-        """Setup the analysis and save buttons section."""
+        """設定分析和結果儲存按鈕區."""
         button_layout = QHBoxLayout()
         
         # 分析按鈕
@@ -237,7 +293,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
         self.main_layout.addLayout(button_layout)
 
     def _setup_results_section(self) -> None:
-        """Setup the results table section."""
+        """設定結果表格區"""
         self.results_layout = QHBoxLayout()
         
         # Create a table for each file type
@@ -250,6 +306,18 @@ class PlasmaAnalyzerGUI(QMainWindow):
             table.setColumnCount(4)
             table.setHorizontalHeaderLabels(['屬性', '平均值', '標準差', '穩定度'])
             
+            # 設定每個欄位的寬度
+            table.setColumnWidth(0, 150)
+            table.setColumnWidth(1, 100)
+            table.setColumnWidth(2, 100)
+            table.setColumnWidth(3, 100)
+            
+            # 啟用右鍵選單
+            table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            table.customContextMenuRequested.connect(
+                lambda pos, table=table: self._show_context_menu(pos, table)
+            )
+            
             layout.addWidget(table)
             group.setLayout(layout)
             self.results_layout.addWidget(group)
@@ -257,17 +325,171 @@ class PlasmaAnalyzerGUI(QMainWindow):
             
         self.main_layout.addLayout(self.results_layout)
 
+    def _show_context_menu(self, pos, table):
+        """顯示右鍵選單"""
+        # 獲取點擊位置的項目
+        item = table.itemAt(pos)
+        
+        if item is not None:
+            menu = QMenu()
+            
+            # 添加選單項目
+            copy_action = menu.addAction("複製選中儲存格")
+            copy_row_action = menu.addAction("複製整行")
+            copy_all_action = menu.addAction("複製全部")
+            menu.addSeparator()
+            custom_analyze_action = menu.addAction("自訂義分析")
+            
+            # 顯示選單
+            action = menu.exec(table.viewport().mapToGlobal(pos))
+            
+            # 處理選單動作
+            if action == copy_action:
+                self._copy_cell(table)
+            elif action == copy_row_action:
+                self._copy_row(table)
+            elif action == copy_all_action:
+                self._copy_all(table)
+            elif action == custom_analyze_action:
+                self._custom_analyze(table)
+
+    def _copy_cell(self, table):
+        """複製選中儲存格"""
+        if table.currentItem() is not None:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(table.currentItem().text())
+            self._show_info("複製成功", "已複製選中儲存格內容")
+
+    def _copy_row(self, table):
+        """複製整行"""
+        current_row = table.currentRow()
+        if current_row >= 0:
+            row_data = []
+            for col in range(table.columnCount()):
+                item = table.item(current_row, col)
+                if item is not None:
+                    row_data.append(item.text())
+            
+            clipboard = QApplication.clipboard()
+            clipboard.setText('\t'.join(row_data))
+            self._show_info("複製成功", "已複製整行內容")
+
+    def _copy_all(self, table):
+        """複製全部內容"""
+        all_data = []
+        # 添加表頭
+        headers = []
+        for col in range(table.columnCount()):
+            headers.append(table.horizontalHeaderItem(col).text())
+        all_data.append('\t'.join(headers))
+        
+        # 添加數據
+        for row in range(table.rowCount()):
+            row_data = []
+            for col in range(table.columnCount()):
+                item = table.item(row, col)
+                if item is not None:
+                    row_data.append(item.text())
+            all_data.append('\t'.join(row_data))
+        
+        clipboard = QApplication.clipboard()
+        clipboard.setText('\n'.join(all_data))
+        self._show_info("複製成功", "已複製全部內容")
+
+    def _custom_analyze(self, table):
+        """自定義區段分析"""
+        try:
+            # 獲取要分析的數據
+            current_row = table.currentRow()
+            if current_row < 0:
+                self._show_warning("警告", "請先選擇要分析的屬性")
+                return
+
+            # 獲取屬性名稱
+            attr_name = table.item(current_row, 0).text()
+            
+            # 顯示區段數輸入對話框
+            dialog = SectionInputDialog(self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+
+            # 獲取區段數
+            section_count = dialog.section_spin.value()
+
+            # 從原始數據中獲取該屬性的時間序列
+            folder_path = self.path_edit.text()
+            for file_type, file_table in self.result_tables.items():
+                if table == file_table:
+                    file_path = os.path.join(folder_path, file_type)
+                    if os.path.exists(file_path):
+                        df = pd.read_csv(file_path)
+                        if attr_name in df.columns:
+                            # 獲取激發時間範圍內的數據
+                            df_activated = df[
+                                (df['Time'] >= self.analyzer.activate_time) & 
+                                (df['Time'] <= self.analyzer.end_time)
+                            ]
+                            
+                            # 計算每個區段的長度
+                            section_length = len(df_activated) // section_count
+                            
+                            # 分析每個區段
+                            section_results = {}
+                            for i in range(section_count):
+                                start_idx = i * section_length
+                                end_idx = start_idx + section_length if i < section_count - 1 else len(df_activated)
+                                section_data = df_activated[attr_name].iloc[start_idx:end_idx]
+                                
+                                mean_val = section_data.mean()
+                                std_val = section_data.std()
+                                stability = (std_val / mean_val) * 100 if mean_val != 0 else 0
+                                
+                                section_results[i + 1] = {
+                                    '平均值': mean_val,
+                                    '標準差': std_val,
+                                    '穩定度': stability
+                                }
+                            
+                            # 顯示結果對話框
+                            result_dialog = SectionResultDialog(section_results, self)
+                            result_dialog.exec()
+                            return
+
+            self._show_warning("警告", "找不到對應的數據")
+            
+        except Exception as e:
+            logger.error(f"自定義分析時發生錯誤: {e}")
+            self._show_error("分析錯誤", str(e))
+
     def _browse_folder(self) -> None:
         """Handle folder browsing action."""
         try:
             folder_path = QFileDialog.getExistingDirectory(self, '選擇資料夾')
             if folder_path:
                 self.path_edit.setText(folder_path)
+                # 清理舊的選擇和結果
+                self._clear_all_data()
+                # 載入新的屬性
                 self._load_file_attributes(folder_path)
                 
         except Exception as e:
             logger.error(f"Error during folder browsing: {e}")
             self._show_error("資料夾瀏覽錯誤", str(e))
+
+    def _clear_all_data(self) -> None:
+        """清理所有數據和選擇"""
+        # 清理所有選擇器的數據
+        for selector in self.file_selectors.values():
+            selector.combo_box.clear()
+            selector.selected_attributes.clear()
+            selector._update_selected_list()
+
+        # 清理所有結果表格
+        for table in self.result_tables.values():
+            table.setRowCount(0)
+
+        # 禁用儲存按鈕
+        self.save_btn.setEnabled(False)
 
     def _load_file_attributes(self, folder_path: str) -> None:
         """Load available attributes for each file type."""
@@ -280,11 +502,15 @@ class PlasmaAnalyzerGUI(QMainWindow):
                     if 'Time' in columns:
                         columns.remove('Time')
                     self.file_selectors[file_type].set_available_attributes(columns)
+                else:
+                    logger.warning(f"File not found: {file_path}")
+                    self.file_selectors[file_type].set_available_attributes([])
             except Exception as e:
                 logger.error(f"Error loading attributes for {file_type}: {e}")
+                self.file_selectors[file_type].set_available_attributes([])
 
     def _analyze_data(self) -> None:
-        """Handle data analysis action."""
+        """資料分析區段"""
         try:
             folder_path = self.path_edit.text()
             if not folder_path:
@@ -326,7 +552,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
             self._show_error("分析錯誤", str(e))
 
     def _update_results_tables(self, results: dict) -> None:
-        """Update all results tables."""
+        """更新結果表格"""
         try:
             for file_type, table in self.result_tables.items():
                 table.setRowCount(0)  # 清空表格
