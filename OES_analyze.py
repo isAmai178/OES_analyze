@@ -154,15 +154,20 @@ class OESAnalyzer:
                     key=lambda x: x.get('差異', 0) if x.get('差異') is not None else 0, 
                     reverse=True)
     
-    def allSpectrum_plot(self, data1, skip_range_nm, output_directory, file_name):
+    def allSpectrum_plot(self, data1, skip_range_nm, output_directory, file_name ,intensity_threshold=None):
         """繪製全波段圖形並標記出最高波段"""
         try:
+            # 過濾低於指定強度的波型
+            if intensity_threshold is not None:
+                print("111\n")
+                data1 = {k: v for k, v in data1.items() if any(m[1] > intensity_threshold for m in v)}
             # 找出每個數據集的最大值點
             peaks1 = self.find_peak_points(data1)
 
             # 取得最大值的波長
             max_peak1 = peaks1[0]  # 已經按最大值排序，所以第一個就是最大的
             sorted_peaks = sorted(peaks1, key=lambda x:x['最大值'], reverse=True)
+
             # 準備數據
             wavelengths1 = sorted(data1.keys())
             y1 = [max(m[1] for m in data1[w]) for w in wavelengths1]
@@ -273,3 +278,16 @@ class OESAnalyzer:
         except Exception as e:
             self.update_status(f"Analysis failed: {str(e)}")
             raise
+
+    def filter_low_intensity(self, threshold: float):
+        """將低於指定強度的波段設置為0"""
+        if not self.all_values:
+            print("self.all_values is empty")
+            return
+        
+        for value, measurements in self.all_values.items():
+            # print(f"Processing value: {value}, measurements: {measurements}")
+            for i, (file_name, intensity) in enumerate(measurements):
+                # print(f"File: {file_name}, Intensity: {intensity}")
+                if intensity < threshold:
+                    self.all_values[value][i] = (file_name, 0.0)

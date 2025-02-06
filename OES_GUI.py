@@ -2,7 +2,7 @@ import os
 from typing import List, Dict
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QLabel, QLineEdit, QFileDialog, 
-                            QTextEdit, QGroupBox, QMessageBox)
+                            QTextEdit, QGroupBox, QMessageBox,QCheckBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 from OES_analyze import OESAnalyzer  # 引入我們的分析類
@@ -119,7 +119,7 @@ class OESAnalyzerGUI(QMainWindow):
         # 起始值設定
         start_layout = QHBoxLayout()
         self.start_value = QLineEdit("195.0")
-        start_layout.addWidget(QLabel("波段起始值:"))
+        start_layout.addWidget(QLabel("全波段起始值:"))
         start_layout.addWidget(self.start_value)
         
         # 初始範圍設定
@@ -134,9 +134,18 @@ class OESAnalyzerGUI(QMainWindow):
         # 添加跳過範圍設定
         skip_layout = QHBoxLayout()
         self.skip_range = QLineEdit("10")
-        skip_layout.addWidget(QLabel("峰值跳過範圍(nm):"))
+        skip_layout.addWidget(QLabel("最高峰值跳過範圍(nm):"))
         skip_layout.addWidget(self.skip_range)
         
+        # 添加過濾強度勾選框
+        self.filter_checkbox = QCheckBox("過濾低於指定強度")
+        self.intensity_threshold = QLineEdit("1000")  # 默認強度閾值
+        intensity_layout = QHBoxLayout()
+        intensity_layout.addWidget(self.filter_checkbox)
+        intensity_layout.addWidget(QLabel("想過濾的強度值:"))
+        intensity_layout.addWidget(self.intensity_threshold)
+        layout.addLayout(intensity_layout)
+
         layout.addLayout(start_layout)
         layout.addLayout(range_layout)
         layout.addLayout(skip_layout)
@@ -219,6 +228,7 @@ class OESAnalyzerGUI(QMainWindow):
         
             # 執行分析
             self.update_status("開始分析...")
+
             excel_file, specific_excel_file = self.analyzer.analyze_and_export(
                 wavebands=wavebands,
                 thresholds=thresholds,
@@ -227,6 +237,12 @@ class OESAnalyzerGUI(QMainWindow):
                 skip_range_nm=skip_range_nm  # 新增：傳遞跳過範圍
             )
             
+            # 檢查是否需要過濾低強度波段
+            intensity_threshold = None
+            if self.filter_checkbox.isChecked():
+                intensity_threshold = float(self.intensity_threshold.text())
+                self.analyzer.filter_low_intensity(intensity_threshold)
+
             # 找出並顯示峰值點
             peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
 
