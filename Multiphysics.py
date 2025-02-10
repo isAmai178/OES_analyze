@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import logging
+from typing import Dict, Any
 
 # Configure logging
 logging.basicConfig(
@@ -48,93 +49,103 @@ class PlasmaAnalyzer:
                     break
 
             if not activated:
-                raise ValueError("無法找到激發時間點")
+                raise ValueError("找不到激發時間點")
             if self.end_time is None:
                 self.end_time = rf_df['Time'].iloc[-1]
-
-            return self.activate_time, self.end_time
 
         except Exception as e:
             logger.error(f"尋找激發時間時發生錯誤: {str(e)}")
             raise
 
-    def analyze_data(self):
-        """分析所有檔案並計算統計量"""
+    def analyze_sections(self, file_name: str, column: str, num_sections: int) -> Dict[str, Dict[str, float]]:
+        """
+        對指定檔案的特定欄位進行區段分析
+        
+        Args:
+            file_name: CSV檔案名稱
+            column: 要分析的欄位名稱
+            num_sections: 要分割的區段數
+            
+        Returns:
+            Dict[str, Dict[str, float]]: 各區段的分析結果
+        """
         try:
-            # 先找出激發時間
-            self.find_activation_time()
-            if self.activate_time is None or self.end_time is None:
-                raise ValueError("無法找到有效的激發時間")
+            # 確保已找到激發時間
+            if self.activate_time is None:
+                self.find_activation_time()
 
+            # 讀取檔案
+            file_path = os.path.join(self.folder_path, file_name)
+            df = pd.read_csv(file_path)
+            
+            # 篩選有效時間範圍的數據
+            mask = (df['Time'] >= self.activate_time) & (df['Time'] <= self.end_time)
+            df_activated = df[mask]
+            
+            if df_activated.empty:
+                raise ValueError(f"在有效時間範圍內找不到數據")
+
+            # 計算每個區段的資料點數
+            total_points = len(df_activated)
+            points_per_section = total_points // num_sections
+            
+            # 分析每個區段
             results = {}
-            for file_name, columns in self.files_config.items():
-                try:
-                    file_path = os.path.join(self.folder_path, file_name)
-                    if not os.path.exists(file_path):
-                        logger.warning(f"找不到檔案: {file_path}")
-                        continue
-
-                    df = pd.read_csv(file_path)
-                    
-                    # 使用Time值篩選資料
-                    df_activated = df[(df['Time'] >= self.activate_time) & 
-                                    (df['Time'] <= self.end_time)]
-                    
-                    if df_activated.empty:
-                        logger.warning(f"檔案 {file_name} 在指定時間範圍內沒有數據")
-                        continue
-
-                    # 創建當前檔案的結果字典
-                    file_results = {}
-                    # 計算每個欄位的統計量
-                    for col in columns:
-                        if col not in df_activated.columns:
-                            logger.warning(f"找不到欄位 {col} 在檔案 {file_name} 中")
-                            continue
-
-                        data = df_activated[col].astype(float)  # 確保數據為數值型態
-                        if data.empty:
-                            continue
-
-                        mean_val = data.mean()
-                        std_val = data.std()
-                        stability = (std_val / mean_val) * 100 if mean_val != 0 else 0
-                        
-                        file_results[col] = {
-                            '平均值': mean_val,
-                            '標準差': std_val,
-                            '穩定度': round(stability, 3)
-                        }
-                    
-                    if file_results:  # 只有在有結果時才添加到結果字典
-                        results[file_name] = file_results
-
-                except Exception as e:
-                    logger.error(f"處理檔案 {file_name} 時發生錯誤: {str(e)}")
-                    continue
-
-            return results
-
-        except Exception as e:
-            logger.error(f"分析過程中發生錯誤: {str(e)}")
-            raise
-
-    def save_results(self, results: dict) -> None:
-        """儲存分析結果"""
-        try:
-            for file_name, file_results in results.items():
-                # 為每個檔案創建獨立的DataFrame並儲存
-                results_df = pd.DataFrame(file_results)
-                output_name = f'{file_name[:-4]}.xlsx'
-                full_output_path = os.path.join(self.output_path, output_name)
+            for i in range(num_sections):
+                start_idx = i * points_per_section
+                end_idx = start_idx + points_per_section if i < num_sections - 1 else None
                 
-                # 確保輸出目錄存在
-                os.makedirs(self.output_path, exist_ok=True)
+                # 取得區段數據
+                section_data = df_activated[column].iloc[start_idx:end_idx]
+                
+                # 計算統計量
+                mean_val = section_data.mean()
+                std_val = section_data.std()
+                stability = (std_val / mean_val * 100) if mean_val != 0 else 0
                 
                 # 儲存結果
-                results_df.to_excel(full_output_path)
-                logger.info(f"已儲存結果到: {full_output_path}")
+                results[i + 1] = {
+                    '平均值': mean_val,
+                    '標準差': std_val,
+                    '穩定度': round(stability, 3)
+                }
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"分析區段時發生錯誤: {str(e)}")
+            raise
 
+    def save_results(self, results: Dict[str, Any]) -> None:
+        """
+        儲存分析結果
+        
+        Args:
+            results: 分析結果字典
+        """
+        try:
+            # 確保輸出目錄存在
+            os.makedirs(self.output_path, exist_ok=True)
+            
+            # 為每個檔案儲存結果
+            for file_name, file_results in results.items():
+                # 準備Excel檔案名稱
+                output_name = f'{file_name[:-4]}_analysis.xlsx'
+                full_output_path = os.path.join(self.output_path, output_name)
+                
+                # 創建Excel writer
+                with pd.ExcelWriter(full_output_path) as writer:
+                    # 為每個屬性創建一個工作表
+                    for attr, section_results in file_results.items():
+                        # 轉換結果為DataFrame
+                        df = pd.DataFrame.from_dict(section_results, orient='index')
+                        df.index.name = '區段'
+                        
+                        # 寫入工作表
+                        df.to_excel(writer, sheet_name=attr)
+                
+                logger.info(f"已儲存分析結果至: {full_output_path}")
+                
         except Exception as e:
             logger.error(f"儲存結果時發生錯誤: {str(e)}")
             raise
@@ -155,7 +166,15 @@ def main():
         
         # 執行分析
         logger.info("開始分析數據...")
-        results = analyzer.analyze_data()
+        
+        # 測試區段分析
+        results = {}
+        for file_name, columns in analyzer.files_config.items():
+            file_results = {}
+            for column in columns:
+                section_results = analyzer.analyze_sections(file_name, column, 3)
+                file_results[column] = section_results
+            results[file_name] = file_results
         
         # 儲存結果
         logger.info("儲存分析結果...")
@@ -164,9 +183,6 @@ def main():
         logger.info("分析完成")
         return 0
         
-    except FileNotFoundError as e:
-        logger.error(f"找不到檔案或目錄: {e}")
-        return 1
     except Exception as e:
         logger.error(f"執行過程中發生錯誤: {e}")
         return 1

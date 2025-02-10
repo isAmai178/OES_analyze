@@ -32,21 +32,29 @@ class FileAttributeSelector(QGroupBox):
     def __init__(self, title: str, parent=None):
         super().__init__(title, parent)
         self.attributes: List[str] = []
-        self.selected_attributes: List[str] = []
+        self.selected_attributes: Dict[str, int] = {}  # 改為字典，儲存屬性和對應的區段數
         self._init_ui()
 
     def _init_ui(self) -> None:
         """Initialize the UI components."""
         layout = QVBoxLayout()
+        
+        # 屬性選擇區
+        attr_layout = QHBoxLayout()
         self.combo_box = QComboBox()
         self.combo_box.currentTextChanged.connect(self._on_selection_changed)
         
-        self.selected_label = QLabel("已選擇的屬性：")
-        self.selected_list = QTableWidget()
-        self.selected_list.setColumnCount(1)
-        self.selected_list.setHorizontalHeaderLabels(["屬性名稱"])
+        # 區段數設定 - 修改最小值為2
+        self.section_spin = QSpinBox()
+        self.section_spin.setRange(2, 10)  # 最少2個區段
+        self.section_spin.setValue(2)
         
-        # Add/Remove buttons
+        attr_layout.addWidget(QLabel("可用屬性："))
+        attr_layout.addWidget(self.combo_box)
+        attr_layout.addWidget(QLabel("區段數："))
+        attr_layout.addWidget(self.section_spin)
+
+        # 添加/移除按鈕
         btn_layout = QHBoxLayout()
         self.add_btn = QPushButton("添加")
         self.remove_btn = QPushButton("移除")
@@ -55,10 +63,14 @@ class FileAttributeSelector(QGroupBox):
         btn_layout.addWidget(self.add_btn)
         btn_layout.addWidget(self.remove_btn)
 
-        layout.addWidget(QLabel("可用屬性："))
-        layout.addWidget(self.combo_box)
+        # 已選擇的屬性列表
+        self.selected_list = QTableWidget()
+        self.selected_list.setColumnCount(2)
+        self.selected_list.setHorizontalHeaderLabels(["屬性名稱", "區段數"])
+
+        layout.addLayout(attr_layout)
         layout.addLayout(btn_layout)
-        layout.addWidget(self.selected_label)
+        layout.addWidget(QLabel("已選擇的屬性："))
         layout.addWidget(self.selected_list)
         self.setLayout(layout)
 
@@ -72,29 +84,32 @@ class FileAttributeSelector(QGroupBox):
         """Add selected attribute to the list."""
         current_attr = self.combo_box.currentText()
         if current_attr and current_attr not in self.selected_attributes:
-            self.selected_attributes.append(current_attr)
+            sections = self.section_spin.value()
+            self.selected_attributes[current_attr] = sections
             self._update_selected_list()
 
     def _remove_attribute(self) -> None:
         """Remove selected attribute from the list."""
         current_row = self.selected_list.currentRow()
         if current_row >= 0:
-            removed_attr = self.selected_attributes.pop(current_row)
+            attr = self.selected_list.item(current_row, 0).text()
+            del self.selected_attributes[attr]
             self._update_selected_list()
 
     def _update_selected_list(self) -> None:
         """Update the selected attributes list display."""
         self.selected_list.setRowCount(len(self.selected_attributes))
-        for i, attr in enumerate(self.selected_attributes):
+        for i, (attr, sections) in enumerate(self.selected_attributes.items()):
             self.selected_list.setItem(i, 0, QTableWidgetItem(attr))
+            self.selected_list.setItem(i, 1, QTableWidgetItem(str(sections)))
 
     def _on_selection_changed(self, text: str) -> None:
         """Handle combo box selection changes."""
         enabled = bool(text) and text not in self.selected_attributes
         self.add_btn.setEnabled(enabled)
 
-    def get_selected_attributes(self) -> List[str]:
-        """Get the list of selected attributes."""
+    def get_selected_attributes(self) -> Dict[str, int]:
+        """Get the dictionary of selected attributes and their section counts."""
         return self.selected_attributes
 
 class SectionInputDialog(QDialog):
@@ -293,21 +308,28 @@ class PlasmaAnalyzerGUI(QMainWindow):
         self.main_layout.addLayout(button_layout)
 
     def _setup_results_section(self) -> None:
-        """設定結果表格區"""
+        """Setup the results table section."""
         self.results_layout = QHBoxLayout()
         
-        # Create a table for each file type
-        self.result_tables = {}
+        # Create a results section for each file type
+        self.result_sections = {}
         for file_type in self.FILE_TYPES:
             group = QGroupBox(f"{file_type} 分析結果")
             layout = QVBoxLayout()
             
+            # Add attribute selector combo box
+            attr_selector = QComboBox()
+            attr_selector.currentTextChanged.connect(
+                lambda text, ft=file_type: self._on_attribute_selected(ft, text)
+            )
+            
+            # Add results table
             table = QTableWidget()
             table.setColumnCount(4)
-            table.setHorizontalHeaderLabels(['屬性', '平均值', '標準差', '穩定度'])
+            table.setHorizontalHeaderLabels(['區段', '平均值', '標準差', '穩定度'])
             
-            # 設定每個欄位的寬度
-            table.setColumnWidth(0, 150)
+            # Set column widths
+            table.setColumnWidth(0, 100)
             table.setColumnWidth(1, 100)
             table.setColumnWidth(2, 100)
             table.setColumnWidth(3, 100)
@@ -315,15 +337,112 @@ class PlasmaAnalyzerGUI(QMainWindow):
             # 啟用右鍵選單
             table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             table.customContextMenuRequested.connect(
-                lambda pos, table=table: self._show_context_menu(pos, table)
+                lambda pos, t=table: self._show_context_menu(pos, t)
             )
             
+            layout.addWidget(attr_selector)
             layout.addWidget(table)
             group.setLayout(layout)
-            self.results_layout.addWidget(group)
-            self.result_tables[file_type] = table
             
+            self.results_layout.addWidget(group)
+            self.result_sections[file_type] = {
+                'selector': attr_selector,
+                'table': table
+            }
+        
         self.main_layout.addLayout(self.results_layout)
+
+    def _analyze_data(self) -> None:
+        """Handle data analysis action."""
+        try:
+            folder_path = self.path_edit.text()
+            if not folder_path:
+                self._show_warning("警告", "請先選擇資料夾路徑")
+                return
+
+            # 更新分析器的設定
+            self.analyzer.set_folder_path(folder_path)
+            self.analyzer.set_threshold(self.threshold_spin.value())
+            
+            # 重置時間設定並重新尋找激發時間
+            self.analyzer.activate_time = None
+            self.analyzer.end_time = None
+            self.analyzer.find_activation_time()
+            
+            # 更新檔案配置並執行分析
+            self.results = {}
+            for file_type, selector in self.file_selectors.items():
+                selected_attrs = selector.get_selected_attributes()
+                if selected_attrs:
+                    # 對每個屬性進行區段分析
+                    file_results = {}
+                    for attr, sections in selected_attrs.items():
+                        # 分析各區段
+                        section_results = self.analyzer.analyze_sections(
+                            file_type, attr, sections
+                        )
+                        # 分析總區段
+                        total_results = self.analyzer.analyze_sections(
+                            file_type, attr, 1
+                        )
+                        # 合併結果
+                        section_results['總區段'] = total_results[1]
+                        file_results[attr] = section_results
+                    self.results[file_type] = file_results
+
+            if not self.results:
+                self._show_warning("警告", "分析未產生任何結果")
+                return
+
+            self._update_results_selectors()
+            self.save_btn.setEnabled(True)
+            self._show_info("成功", "分析完成！")
+            
+        except Exception as e:
+            logger.error(f"Error during data analysis: {e}")
+            self._show_error("分析錯誤", str(e))
+
+    def _update_results_selectors(self) -> None:
+        """Update attribute selectors with available results."""
+        for file_type, section in self.result_sections.items():
+            selector = section['selector']
+            selector.clear()
+            if file_type in self.results:
+                attributes = list(self.results[file_type].keys())
+                selector.addItems(attributes)
+                if attributes:
+                    selector.setCurrentIndex(0)
+
+    def _on_attribute_selected(self, file_type: str, attribute: str) -> None:
+        """Handle attribute selection change in results section."""
+        if not attribute or file_type not in self.results:
+            return
+
+        table = self.result_sections[file_type]['table']
+        results = self.results[file_type][attribute]
+        
+        # 計算總行數（區段數 + 1個總區段）
+        total_rows = len(results)
+        table.setRowCount(total_rows)
+        
+        # 填充各區段數據
+        row = 0
+        for section, values in results.items():
+            if section == '總區段':
+                continue  # 先跳過總區段
+            table.setItem(row, 0, QTableWidgetItem(f"區段 {section}"))
+            table.setItem(row, 1, QTableWidgetItem(f"{values['平均值']:.2f}"))
+            table.setItem(row, 2, QTableWidgetItem(f"{values['標準差']:.2f}"))
+            table.setItem(row, 3, QTableWidgetItem(f"{values['穩定度']:.2f}"))
+            row += 1
+        
+        # 最後添加總區段數據
+        if '總區段' in results:
+            total_values = results['總區段']
+            table.setItem(row, 0, QTableWidgetItem("總區段"))
+            table.setItem(row, 1, QTableWidgetItem(f"{total_values['平均值']:.2f}"))
+            table.setItem(row, 2, QTableWidgetItem(f"{total_values['標準差']:.2f}"))
+            table.setItem(row, 3, QTableWidgetItem(f"{total_values['穩定度']:.2f}"))
 
     def _show_context_menu(self, pos, table):
         """顯示右鍵選單"""
@@ -334,24 +453,20 @@ class PlasmaAnalyzerGUI(QMainWindow):
             menu = QMenu()
             
             # 添加選單項目
-            copy_action = menu.addAction("複製選中儲存格")
+            copy_cell_action = menu.addAction("複製選中儲存格")
             copy_row_action = menu.addAction("複製整行")
             copy_all_action = menu.addAction("複製全部")
-            menu.addSeparator()
-            custom_analyze_action = menu.addAction("自訂義分析")
             
             # 顯示選單
             action = menu.exec(table.viewport().mapToGlobal(pos))
             
             # 處理選單動作
-            if action == copy_action:
+            if action == copy_cell_action:
                 self._copy_cell(table)
             elif action == copy_row_action:
                 self._copy_row(table)
             elif action == copy_all_action:
                 self._copy_all(table)
-            elif action == custom_analyze_action:
-                self._custom_analyze(table)
 
     def _copy_cell(self, table):
         """複製選中儲存格"""
@@ -396,71 +511,6 @@ class PlasmaAnalyzerGUI(QMainWindow):
         clipboard.setText('\n'.join(all_data))
         self._show_info("複製成功", "已複製全部內容")
 
-    def _custom_analyze(self, table):
-        """自定義區段分析"""
-        try:
-            # 獲取要分析的數據
-            current_row = table.currentRow()
-            if current_row < 0:
-                self._show_warning("警告", "請先選擇要分析的屬性")
-                return
-
-            # 獲取屬性名稱
-            attr_name = table.item(current_row, 0).text()
-            
-            # 顯示區段數輸入對話框
-            dialog = SectionInputDialog(self)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return
-
-            # 獲取區段數
-            section_count = dialog.section_spin.value()
-
-            # 從原始數據中獲取該屬性的時間序列
-            folder_path = self.path_edit.text()
-            for file_type, file_table in self.result_tables.items():
-                if table == file_table:
-                    file_path = os.path.join(folder_path, file_type)
-                    if os.path.exists(file_path):
-                        df = pd.read_csv(file_path)
-                        if attr_name in df.columns:
-                            # 獲取激發時間範圍內的數據
-                            df_activated = df[
-                                (df['Time'] >= self.analyzer.activate_time) & 
-                                (df['Time'] <= self.analyzer.end_time)
-                            ]
-                            
-                            # 計算每個區段的長度
-                            section_length = len(df_activated) // section_count
-                            
-                            # 分析每個區段
-                            section_results = {}
-                            for i in range(section_count):
-                                start_idx = i * section_length
-                                end_idx = start_idx + section_length if i < section_count - 1 else len(df_activated)
-                                section_data = df_activated[attr_name].iloc[start_idx:end_idx]
-                                
-                                mean_val = section_data.mean()
-                                std_val = section_data.std()
-                                stability = (std_val / mean_val) * 100 if mean_val != 0 else 0
-                                
-                                section_results[i + 1] = {
-                                    '平均值': mean_val,
-                                    '標準差': std_val,
-                                    '穩定度': stability
-                                }
-                            
-                            # 顯示結果對話框
-                            result_dialog = SectionResultDialog(section_results, self)
-                            result_dialog.exec()
-                            return
-
-            self._show_warning("警告", "找不到對應的數據")
-            
-        except Exception as e:
-            logger.error(f"自定義分析時發生錯誤: {e}")
-            self._show_error("分析錯誤", str(e))
-
     def _browse_folder(self) -> None:
         """Handle folder browsing action."""
         try:
@@ -469,6 +519,9 @@ class PlasmaAnalyzerGUI(QMainWindow):
                 self.path_edit.setText(folder_path)
                 # 清理舊的選擇和結果
                 self._clear_all_data()
+                # 重置分析器的時間設定
+                self.analyzer.activate_time = None
+                self.analyzer.end_time = None
                 # 載入新的屬性
                 self._load_file_attributes(folder_path)
                 
@@ -485,8 +538,8 @@ class PlasmaAnalyzerGUI(QMainWindow):
             selector._update_selected_list()
 
         # 清理所有結果表格
-        for table in self.result_tables.values():
-            table.setRowCount(0)
+        for table in self.result_sections.values():
+            table['table'].setRowCount(0)
 
         # 禁用儲存按鈕
         self.save_btn.setEnabled(False)
@@ -508,73 +561,6 @@ class PlasmaAnalyzerGUI(QMainWindow):
             except Exception as e:
                 logger.error(f"Error loading attributes for {file_type}: {e}")
                 self.file_selectors[file_type].set_available_attributes([])
-
-    def _analyze_data(self) -> None:
-        """資料分析區段"""
-        try:
-            folder_path = self.path_edit.text()
-            if not folder_path:
-                self._show_warning("警告", "請先選擇資料夾路徑")
-                return
-
-            # 更新分析器的設定
-            self.analyzer.set_folder_path(folder_path)
-            self.analyzer.set_threshold(self.threshold_spin.value())
-            
-            # 更新檔案配置
-            new_config = {}
-            for file_type, selector in self.file_selectors.items():
-                selected_attrs = selector.get_selected_attributes()
-                if selected_attrs:
-                    new_config[file_type] = selected_attrs
-            
-            if not new_config:
-                self._show_warning("警告", "請至少選擇一個檔案的分析屬性")
-                return
-                
-            self.analyzer.files_config = new_config
-            logger.info(f"分析配置: {new_config}")
-
-            # 執行分析
-            self.results = self.analyzer.analyze_data()
-            
-            if not self.results:
-                self._show_warning("警告", "分析未產生任何結果")
-                return
-                
-            logger.info(f"分析結果: {self.results}")
-            self._update_results_tables(self.results)
-            self.save_btn.setEnabled(True)
-            self._show_info("成功", "分析完成！")
-            
-        except Exception as e:
-            logger.error(f"Error during data analysis: {e}")
-            self._show_error("分析錯誤", str(e))
-
-    def _update_results_tables(self, results: dict) -> None:
-        """更新結果表格"""
-        try:
-            for file_type, table in self.result_tables.items():
-                table.setRowCount(0)  # 清空表格
-                if file_type in results:
-                    data = results[file_type]
-                    for attr, values in data.items():
-                        row_position = table.rowCount()
-                        table.insertRow(row_position)
-                        
-                        # Set attribute name
-                        table.setItem(row_position, 0, QTableWidgetItem(str(attr)))
-                        
-                        # Set values
-                        table.setItem(row_position, 1, QTableWidgetItem(f"{values['平均值']:.2f}"))
-                        table.setItem(row_position, 2, QTableWidgetItem(f"{values['標準差']:.2f}"))
-                        table.setItem(row_position, 3, QTableWidgetItem(f"{values['穩定度']:.2f}"))
-                        
-            logger.info("Results tables updated successfully")
-            
-        except Exception as e:
-            logger.error(f"Error updating results tables: {e}")
-            raise
 
     def _save_results(self) -> None:
         """Handle results saving action."""
