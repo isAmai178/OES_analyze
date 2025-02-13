@@ -217,7 +217,8 @@ class OESAnalyzer:
             return None
 
     def analyze_and_export(self, wavebands: List[float], thresholds: List[float], 
-                          initial_start: int, initial_end: int, skip_range_nm: float) -> Tuple[str, str]:
+                          initial_start: int, initial_end: int, skip_range_nm: float,
+                          output_directory: str) -> Tuple[str, str]:
         """執行分析並導出結果"""
         try:
             if not self.selected_files:
@@ -226,16 +227,14 @@ class OESAnalyzer:
             # 收集數據
             self.gather_values()
 
-            # 創建結果資料夾
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            output_directory = os.path.join(current_dir, "OES光譜分析結果")
+            # 使用傳遞的 output_directory
             os.makedirs(output_directory, exist_ok=True)
             self.update_status(f"將在以下目錄生成分析結果：{output_directory}")
 
             # 保存當前分析結果
             self.previous_values = self.all_values.copy()
             self.update_status(f"已保存當前分析結果，包含 {len(self.all_values)} 個波長點")
-            experiment_file_name = os.path.splitext(os.path.basename(self.selected_files[0]))[0] #將分析檔案名稱讀取下來
+            experiment_file_name = os.path.splitext(os.path.basename(self.selected_files[0]))[0]  # 將分析檔案名稱讀取下來
             base_name = experiment_file_name.split('_')[1]  # 取得T2024-09-26
 
             # 處理特定波段數據

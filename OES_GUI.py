@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTextEdit, QGroupBox, QMessageBox,QCheckBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
+from PyQt6.QtWidgets import QGridLayout
 from OES_analyze import OESAnalyzer  # 引入我們的分析類
 
 class OESAnalyzerGUI(QMainWindow):
@@ -25,25 +26,26 @@ class OESAnalyzerGUI(QMainWindow):
         
         # 創建各個設定區域
         self.create_file_selection(layout)
+        self.create_save_directory_selection(layout)
         self.create_parameter_settings(layout)
         self.create_waveband_settings(layout)
         self.create_execute_button(layout)
         self.create_peak_display(layout)
-        # self.create_image_display(layout)  
+        self.create_image_display(layout)  
         self.create_status_display(layout)
     
-    # def create_image_display(self, parent_layout):
-    #     """創建圖片顯示區域"""
-    #     group = QGroupBox("波長比較圖")
-    #     layout = QVBoxLayout()
-    
-    #     self.image_label = QLabel()
-    #     self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    #     self.image_label.setMinimumHeight(300)
-    #     layout.addWidget(self.image_label)
-    
-    #     group.setLayout(layout)
-    #     parent_layout.addWidget(group)
+    def create_image_display(self, parent_layout):
+        """創建圖片顯示區域"""
+        group = QGroupBox("波長比較圖")
+        layout = QVBoxLayout()
+
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setMinimumHeight(300)
+        layout.addWidget(self.image_label)
+
+        group.setLayout(layout)
+        parent_layout.addWidget(group)
 
     def update_image_display(self, image_path: str):
         """更新圖片顯示"""
@@ -111,7 +113,29 @@ class OESAnalyzerGUI(QMainWindow):
         layout.addLayout(name_layout)
         group.setLayout(layout)
         parent_layout.addWidget(group)
+    
+    def create_save_directory_selection(self, parent_layout):
+        group = QGroupBox("保存路徑設定")
+        layout = QVBoxLayout()
         
+        # 保存路徑選擇
+        save_folder_layout = QHBoxLayout()
+        self.save_folder_path = QLineEdit()
+        save_browse_button = QPushButton("選擇保存路徑")
+        save_browse_button.clicked.connect(self.browse_save_folder)
+        save_folder_layout.addWidget(QLabel("保存路徑:"))
+        save_folder_layout.addWidget(self.save_folder_path)
+        save_folder_layout.addWidget(save_browse_button)
+        
+        layout.addLayout(save_folder_layout)
+        group.setLayout(layout)
+        parent_layout.addWidget(group)
+
+    def browse_save_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "選擇保存路徑")
+        if folder:
+            self.save_folder_path.setText(folder)
+
     def create_parameter_settings(self, parent_layout):
         group = QGroupBox("參數設定")
         layout = QVBoxLayout()
@@ -158,7 +182,7 @@ class OESAnalyzerGUI(QMainWindow):
         
         # 特定波段設定
         self.wavebands = QLineEdit("486.0, 612.0, 656.0, 777.0")
-        layout.addWidget(QLabel("特定波段值 (用逗號分隔):"))
+        layout.addWidget(QLabel("特定波段值(必填) (用逗號分隔):"))
         layout.addWidget(self.wavebands)
         
         # 變化量設定
@@ -205,6 +229,11 @@ class OESAnalyzerGUI(QMainWindow):
                 QMessageBox.warning(self, "警告", "請選擇資料夾路徑")
                 return
             
+            save_folder_path = self.save_folder_path.text()
+            if not save_folder_path:
+                QMessageBox.warning(self, "警告", "請選擇保存路徑")
+                return
+            
             # 解析輸入值
             base_name = self.base_name.text()
             start_value = float(self.start_value.text())
@@ -212,14 +241,15 @@ class OESAnalyzerGUI(QMainWindow):
             initial_end = int(self.initial_end.text())
             wavebands = [float(x.strip()) for x in self.wavebands.text().split(",")]
             thresholds = [float(x.strip()) for x in self.thresholds.text().split(",")]
-            skip_range_nm = float(self.skip_range.text())  # 新增：獲取跳過範圍
+            skip_range_nm = float(self.skip_range.text())  # 獲取跳過範圍
 
             # 生成文件路徑列表
             file_paths = [
                 os.path.join(folder_path, f"{base_name}{i:04d}.txt") 
                 for i in range(initial_start, initial_end + 1)
             ]
-            file_name = base_name.split('_')[1]  # 取得T2024-09-26
+
+            file_name = base_name.split('_')[1]  # 取得檔案前段名稱(通常為時間)
             
             # 創建分析器並設置回調
             self.analyzer = OESAnalyzer(start_value=start_value)
@@ -229,12 +259,20 @@ class OESAnalyzerGUI(QMainWindow):
             # 執行分析
             self.update_status("開始分析...")
 
+            #使用用戶選擇的保存路徑新增資料夾名為
+            if os.path.basename(save_folder_path) == "OES光譜分析結果":
+                output_directory = save_folder_path
+            else:
+                output_directory = os.path.join(save_folder_path, "OES光譜分析結果")
+                os.makedirs(output_directory,exist_ok=True)
+
             excel_file, specific_excel_file = self.analyzer.analyze_and_export(
                 wavebands=wavebands,
                 thresholds=thresholds,
                 initial_start=initial_start,
                 initial_end=initial_end,
-                skip_range_nm=skip_range_nm  # 新增：傳遞跳過範圍
+                skip_range_nm=skip_range_nm,  # 傳遞跳過範圍
+                output_directory=output_directory  # 傳遞用戶選擇的保存路徑
             )
             
             # 檢查是否需要過濾低強度波段
@@ -246,12 +284,13 @@ class OESAnalyzerGUI(QMainWindow):
             # 找出並顯示峰值點
             peak_points = self.analyzer.find_peak_points(self.analyzer.all_values)
 
-           # 檢查是否有前一次的分析結果
+           
             self.update_status("開始生成全波段圖...")
-            # 生成全波段圖
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            output_directory = os.path.join(current_dir, "OES光譜分析結果")
-            os.makedirs(output_directory, exist_ok=True)
+
+            # # 儲存全波段圖
+            # current_dir = os.path.dirname(os.path.abspath(__file__))
+            # output_directory = os.path.join(current_dir, "OES光譜分析結果")
+            # os.makedirs(output_directory, exist_ok=True)
 
             # 生成全波段圖
             output_path = self.analyzer.allSpectrum_plot(
@@ -261,6 +300,8 @@ class OESAnalyzerGUI(QMainWindow):
                 file_name
             )
 
+            self.update_image_display(output_path)
+
             self.update_peak_display(peak_points)
 
             # # 保存當前分析結果供下次比較
@@ -268,7 +309,7 @@ class OESAnalyzerGUI(QMainWindow):
             # self.update_status(f"已保存當前分析結果，包含 {len(self.analyzer.all_values)} 個波長點")
         
             result_message = (
-                f"分析完成！結果已保存至：\n"
+                f"分析完成！結果已保存至：{os.path.basename(save_folder_path)}\n"
                 f"1. 光譜變化分析：{os.path.basename(excel_file)}\n"
                 f"2. 特定波段分析：{os.path.basename(specific_excel_file)}\n"
                 f"3. 全波段圖與前三強波段：{os.path.basename(output_path)}"
