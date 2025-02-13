@@ -18,7 +18,7 @@ import pandas as pd
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QFileDialog, QSpinBox,
-    QDoubleSpinBox, QTableWidget, QTableWidgetItem, QMessageBox
+    QDoubleSpinBox, QTableWidget, QTableWidgetItem, QMessageBox, QMenu
 )
 from PyQt6.QtCore import Qt
 from oes_analyzer import OESAnalyzer
@@ -42,7 +42,7 @@ class OESAnalyzerGUI(QMainWindow):
     
     # Class constants
     WINDOW_TITLE = 'OES Analyzer'
-    WINDOW_GEOMETRY = (100, 100, 400, 600)
+    WINDOW_GEOMETRY = (100, 100, 800, 600)
     DEFAULT_PARAMS = AnalysisParameters()
     
     def __init__(self):
@@ -110,8 +110,8 @@ class OESAnalyzerGUI(QMainWindow):
         # Wave detection
         wave_layout = QVBoxLayout()
         wave_label = QLabel('檢測波長(nm):')
-        self.detect_wave_spin = QSpinBox()
-        self.detect_wave_spin.setRange(0, 1000)
+        self.detect_wave_spin = QDoubleSpinBox()
+        self.detect_wave_spin.setRange(0.0, 1000.0)
         self.detect_wave_spin.setValue(self.DEFAULT_PARAMS.detect_wave)
         self.detect_wave_spin.setFixedWidth(100)
         wave_layout.addWidget(wave_label)
@@ -133,7 +133,7 @@ class OESAnalyzerGUI(QMainWindow):
         section_layout = QVBoxLayout()
         section_label = QLabel('解離區段數:')
         self.section_spin = QSpinBox()
-        self.section_spin.setRange(1, 10)
+        self.section_spin.setRange(2, 10)
         self.section_spin.setValue(self.DEFAULT_PARAMS.section_count)
         self.section_spin.setFixedWidth(100)
         section_layout.addWidget(section_label)
@@ -166,6 +166,10 @@ class OESAnalyzerGUI(QMainWindow):
         self.result_table.setColumnCount(4)
         self.result_table.setHorizontalHeaderLabels(['區段', '平均值', '標準差', '穩定度'])
         self.main_layout.addWidget(self.result_table)
+
+        # 啟用右鍵選單
+        self.result_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.result_table.customContextMenuRequested.connect(self._show_context_menu)
 
         save_btn = QPushButton('儲存結果')
         save_btn.clicked.connect(self._save_results)
@@ -319,6 +323,65 @@ class OESAnalyzerGUI(QMainWindow):
     def _show_info(self, title: str, message: str) -> None:
         """Show information message box."""
         QMessageBox.information(self, title, message)
+
+    def _show_context_menu(self, pos):
+        """顯示右鍵選單"""
+        menu = QMenu()
+        copy_cell_action = menu.addAction("複製當前儲存格")
+        copy_row_action = menu.addAction("複製當前行")
+        copy_all_action = menu.addAction("複製全部")
+        
+        action = menu.exec(self.result_table.mapToGlobal(pos))
+        
+        if action == copy_cell_action:
+            self._copy_cell()
+        elif action == copy_row_action:
+            self._copy_row()
+        elif action == copy_all_action:
+            self._copy_all()
+
+    def _copy_cell(self):
+        """複製選中儲存格"""
+        if self.result_table.currentItem() is not None:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(self.result_table.currentItem().text())
+            self._show_info("複製成功", "已複製選中儲存格內容")
+
+    def _copy_row(self):
+        """複製整行"""
+        current_row = self.result_table.currentRow()
+        if current_row >= 0:
+            row_data = []
+            for col in range(self.result_table.columnCount()):
+                item = self.result_table.item(current_row, col)
+                if item is not None:
+                    row_data.append(item.text())
+            
+            clipboard = QApplication.clipboard()
+            clipboard.setText('\t'.join(row_data))
+            self._show_info("複製成功", "已複製整行內容")
+
+    def _copy_all(self):
+        """複製全部內容"""
+        all_data = []
+        # 添加表頭
+        headers = []
+        for col in range(self.result_table.columnCount()):
+            headers.append(self.result_table.horizontalHeaderItem(col).text())
+        all_data.append('\t'.join(headers))
+        
+        # 添加數據
+        for row in range(self.result_table.rowCount()):
+            row_data = []
+            for col in range(self.result_table.columnCount()):
+                item = self.result_table.item(row, col)
+                if item is not None:
+                    row_data.append(item.text())
+            all_data.append('\t'.join(row_data))
+        
+        clipboard = QApplication.clipboard()
+        clipboard.setText('\n'.join(all_data))
+        self._show_info("複製成功", "已複製全部內容")
 
 def main():
     app = QApplication(sys.argv)
