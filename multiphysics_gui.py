@@ -13,6 +13,13 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from Multiphysics import PlasmaAnalyzer
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+import numpy as np
+from matplotlib.font_manager import FontProperties
+import matplotlib as mpl
 
 # Configure logging
 logging.basicConfig(
@@ -174,6 +181,103 @@ class SectionResultDialog(QDialog):
         button_box.rejected.connect(self.reject)
 
         layout.addWidget(self.table)
+        layout.addWidget(button_box)
+        self.setLayout(layout)
+
+class AnalysisPlot(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        try:
+            mpl.rcParams['font.family'] = ['Microsoft JhengHei', 'sans-serif']
+            mpl.rcParams['axes.unicode_minus'] = False
+        except Exception as e:
+            logger.error(f"Error setting font: {e}")
+            
+        self.figure = Figure(figsize=(12, 5))
+        self.canvas = FigureCanvas(self.figure)
+        
+        layout = QVBoxLayout()
+        layout.addWidget(self.canvas)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+        
+        self.ax = self.figure.add_subplot(111)
+        self.figure.subplots_adjust(right=0.85)
+
+    def plot_data(self, data, results, activate_time, end_time):
+        """繪製數據和區段分析圖"""
+        try:
+            self.ax.clear()
+            
+            # 使用索引作為 x 軸
+            x = np.arange(len(data))
+            
+            # 繪製原始數據
+            self.ax.plot(x, data, 'b-', linewidth=1, label='原始數據')
+            
+            # 找到激發區間的索引
+            start_idx = activate_time
+            end_idx = end_time
+            
+            # 計算激發區間內的區段
+            sections = [key for key in results.keys() if key != '總區段']
+            active_duration = end_idx - start_idx
+            points_per_section = active_duration // len(sections)
+            
+            # 繪製區段分隔線和標籤
+            for i in range(len(sections)):
+                section_start = start_idx + i * points_per_section
+                
+                # 繪製分隔線
+                if i > 0:  # 不在第一個區段的開始畫線
+                    self.ax.axvline(x=section_start, color='r', linestyle='-', alpha=0.5)
+                
+                # 添加區段標籤
+                if i == len(sections) - 1:
+                    # 最後一個區段
+                    section_center = (section_start + end_idx) / 2
+                else:
+                    section_center = (section_start + (start_idx + (i + 1) * points_per_section)) / 2
+                
+                # 在區段中心上方添加標籤
+                y_pos = max(data) + (max(data) - min(data)) * 0.05
+                self.ax.text(section_center, y_pos, f'區段{i+1}', 
+                           horizontalalignment='center',
+                           verticalalignment='bottom')
+            
+            # 設置圖表屬性
+            self.ax.set_xlabel('時間')
+            self.ax.set_ylabel('數值')
+            self.ax.grid(True)
+            
+            # 調整布局
+            self.figure.tight_layout()
+            
+            # 更新畫布
+            self.canvas.draw()
+            
+        except Exception as e:
+            logger.error(f"Error in plot_data: {e}")
+            raise
+
+class PlotDialog(QDialog):
+    """對話框用於顯示分析圖表"""
+    def __init__(self, data, results, activate_time, end_time, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("分析圖表")
+        self.setMinimumSize(1000, 500)
+        
+        layout = QVBoxLayout()
+        
+        # 創建圖表
+        self.plot = AnalysisPlot()
+        self.plot.plot_data(data, results, activate_time, end_time)
+        
+        # 添加關閉按鈕
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(self.reject)
+        
+        layout.addWidget(self.plot)
         layout.addWidget(button_box)
         self.setLayout(layout)
 
@@ -419,54 +523,49 @@ class PlasmaAnalyzerGUI(QMainWindow):
             return
 
         table = self.result_sections[file_type]['table']
-        results = self.results[file_type][attribute]
         
-        # 計算總行數（區段數 + 1個總區段）
-        total_rows = len(results)
+        # 更新表格
+        total_rows = len(self.results[file_type][attribute])
         table.setRowCount(total_rows)
         
-        # 填充各區段數據
         row = 0
-        for section, values in results.items():
+        for section, values in self.results[file_type][attribute].items():
             if section == '總區段':
-                continue  # 先跳過總區段
+                continue
             table.setItem(row, 0, QTableWidgetItem(f"區段 {section}"))
             table.setItem(row, 1, QTableWidgetItem(f"{values['平均值']:.2f}"))
             table.setItem(row, 2, QTableWidgetItem(f"{values['標準差']:.2f}"))
             table.setItem(row, 3, QTableWidgetItem(f"{values['穩定度']:.2f}"))
             row += 1
         
-        # 最後添加總區段數據
-        if '總區段' in results:
-            total_values = results['總區段']
+        if '總區段' in self.results[file_type][attribute]:
+            total_values = self.results[file_type][attribute]['總區段']
             table.setItem(row, 0, QTableWidgetItem("總區段"))
             table.setItem(row, 1, QTableWidgetItem(f"{total_values['平均值']:.2f}"))
             table.setItem(row, 2, QTableWidgetItem(f"{total_values['標準差']:.2f}"))
             table.setItem(row, 3, QTableWidgetItem(f"{total_values['穩定度']:.2f}"))
+        
+
 
     def _show_context_menu(self, pos, table):
         """顯示右鍵選單"""
-        # 獲取點擊位置的項目
-        item = table.itemAt(pos)
+        menu = QMenu()
+        copy_cell_action = menu.addAction("複製當前儲存格")
+        copy_row_action = menu.addAction("複製當前行")
+        copy_all_action = menu.addAction("複製全部")
+        menu.addSeparator()  # 添加分隔線
+        show_plot_action = menu.addAction("觀察圖表")  # 新增圖表選項
         
-        if item is not None:
-            menu = QMenu()
-            
-            # 添加選單項目
-            copy_cell_action = menu.addAction("複製選中儲存格")
-            copy_row_action = menu.addAction("複製整行")
-            copy_all_action = menu.addAction("複製全部")
-            
-            # 顯示選單
-            action = menu.exec(table.viewport().mapToGlobal(pos))
-            
-            # 處理選單動作
-            if action == copy_cell_action:
-                self._copy_cell(table)
-            elif action == copy_row_action:
-                self._copy_row(table)
-            elif action == copy_all_action:
-                self._copy_all(table)
+        action = menu.exec(table.mapToGlobal(pos))
+        
+        if action == copy_cell_action:
+            self._copy_cell(table)
+        elif action == copy_row_action:
+            self._copy_row(table)
+        elif action == copy_all_action:
+            self._copy_all(table)
+        elif action == show_plot_action:
+            self._show_plot(table)
 
     def _copy_cell(self, table):
         """複製選中儲存格"""
@@ -510,6 +609,44 @@ class PlasmaAnalyzerGUI(QMainWindow):
         clipboard = QApplication.clipboard()
         clipboard.setText('\n'.join(all_data))
         self._show_info("複製成功", "已複製全部內容")
+
+    def _show_plot(self, table):
+        """顯示分析圖表"""
+        try:
+            # 獲取當前選中的檔案類型和屬性
+            for file_type, section in self.result_sections.items():
+                if section['table'] == table:
+                    attribute = section['selector'].currentText()
+                    if attribute and file_type in self.results:
+                        # 讀取數據
+                        df = pd.read_csv(os.path.join(self.analyzer.folder_path, file_type))
+                        
+                        # 獲取數據
+                        data = df[attribute].values
+                        
+                        # 獲取激發時間和結束時間的索引
+                        df['Time_seconds'] = df['Time'].apply(lambda x: sum(float(i) * m for i, m in zip(x.split(':'), [3600, 60, 1])))
+                        activate_time = np.where(df['Time_seconds'] >= float(self.analyzer.activate_time.split(':')[0]) * 3600 + 
+                                              float(self.analyzer.activate_time.split(':')[1]) * 60 + 
+                                              float(self.analyzer.activate_time.split(':')[2]))[0][0]
+                        end_time = np.where(df['Time_seconds'] <= float(self.analyzer.end_time.split(':')[0]) * 3600 + 
+                                         float(self.analyzer.end_time.split(':')[1]) * 60 + 
+                                         float(self.analyzer.end_time.split(':')[2]))[0][-1]
+                        
+                        # 創建並顯示圖表對話框
+                        dialog = PlotDialog(
+                            data, 
+                            self.results[file_type][attribute],
+                            activate_time,
+                            end_time,
+                            self
+                        )
+                        dialog.exec()
+                        break
+                        
+        except Exception as e:
+            logger.error(f"Error showing plot: {e}")
+            self._show_error("圖表顯示錯誤", str(e))
 
     def _browse_folder(self) -> None:
         """Handle folder browsing action."""
