@@ -171,3 +171,38 @@ class OESAnalyzer:
             ])
 
         return pd.DataFrame(results, columns=['區段', '平均值', '標準差', '穩定度'])
+
+    def detect_activate_time(self, max_wave: float, threshold: float, start_index: int) -> Tuple[Optional[int], Optional[int]]:
+        """
+        Find activation time points.
+
+        Args:
+            max_wave: Wave length to analyze
+            threshold: Threshold for activation detection
+            start_index: Starting index for the analysis
+
+        Returns:
+            Tuple of activation start and end times
+        """
+        if max_wave not in self._all_data:
+            logger.error(f"Wave length {max_wave} not found in data")
+            return None, None
+
+        time_series = self._all_data[max_wave]
+        activated = False
+        activate_time = None
+        end_time = None
+        
+        for i in range(len(time_series) - 1):
+            diff = time_series[i + 1] - time_series[i]
+            
+            if not activated and diff > threshold:
+                activate_time = i + 1 + start_index
+                activated = True
+                logger.debug(f"Activation detected at index {activate_time}")
+            elif activated and diff < -threshold:
+                end_time = i + 1 + start_index
+                logger.debug(f"Deactivation detected at index {end_time}")
+                break
+                
+        return activate_time, end_time
