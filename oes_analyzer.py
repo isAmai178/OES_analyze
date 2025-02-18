@@ -278,8 +278,9 @@ class OESAnalyzer:
             threshold: Threshold value used in analysis
         """
         try:
+            # 使用用戶選擇的儲存路徑
             output_name = os.path.basename(base_path)
-            excel_name = f'{output_name}.xlsx'
+            excel_name = os.path.join(base_path, f'{output_name}.xlsx')  # 更新儲存路徑
             
             with pd.ExcelWriter(excel_name) as writer:
                 df.to_excel(writer, sheet_name=str(threshold), index=False)

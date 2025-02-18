@@ -646,10 +646,15 @@ class OESAnalyzerGUI(QMainWindow):
                 self._show_warning("警告", "請先選擇資料夾路徑")
                 return
 
+            # 新增選擇儲存目錄的對話框
+            save_dir = QFileDialog.getExistingDirectory(self, '選擇儲存位置')
+            if not save_dir:
+                return
+
             data = self._get_table_data()
             df = pd.DataFrame(data, columns=['區段', '平均值', '標準差', '穩定度'])
             
-            self.analyzer.save_to_excel(df, base_path, self.threshold_spin.value())
+            self.analyzer.save_to_excel(df, save_dir, self.threshold_spin.value())  # 使用選擇的儲存目錄
             self._show_info("成功", "結果已成功儲存！")
             
         except Exception as e:

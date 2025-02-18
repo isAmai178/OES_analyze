@@ -45,13 +45,13 @@ class OESController:
         except Exception as e:
             logger.error(f"Error during data loading and processing: {e}")
             raise
+
     def scan_file_indices(self, folder_path: str) -> Tuple[Optional[str], Optional[int], Optional[int]]:
         """
         Scan the folder to find the range of indices for the given base name.
 
         Args:
             folder_path: Path to the folder containing the files.
-            base_name: Base name of the files.
 
         Returns:
             A tuple containing the start and end indices.
@@ -81,7 +81,7 @@ class OESController:
         except Exception as e:
             logger.error(f"Error finding spectrum files: {e}")
             return None, None, None
-    def analyze_data(self, detect_wave: float, threshold: float, section_count: int) -> pd.DataFrame:
+    def analyze_data(self, detect_wave: float, threshold: float, section_count: int,base_name: str, base_path: str, start_index: int ) -> pd.DataFrame:
         """
         Analyze the processed data and return a DataFrame of results.
 
@@ -99,8 +99,17 @@ class OESController:
             # Ensure the data for the specific wave exists
             if detect_wave not in self.analyzer._all_data:
                 raise ValueError(f"Wave length {detect_wave} not found in the data.")
+            # 1. find active time point and end time point
+            activate_time, end_time = self.analyzer.detect_activate_time(detect_wave, threshold, start_index)
+            print(activate_time,end_time)
+            if activate_time is None or end_time is None:
+                raise ValueError("Could not detect activation time.")
 
-            wave_data = self.analyzer._all_data[detect_wave]
+            # 2. read data of active time period 
+            activate_time_file = self.analyzer.generate_file_names(base_name, activate_time + 10, end_time - 10)
+            activate_time_data = self.analyzer.read_file_to_data(activate_time_file, base_path)
+
+            wave_data = activate_time_data[detect_wave]
             sectioned_data = self.analyzer.analyze_sections(wave_data, section_count)
 
             # Store and return results
@@ -112,7 +121,7 @@ class OESController:
             logger.error(f"Error during data analysis: {e}")
             raise
 
-    def save_results_to_excel(self, base_path: str, threshold: float) -> None:
+    def save_results_to_excel(self, base_path: str, threshold: float, base_name: str) -> None:
         """
         Save the analysis results to an Excel file.
 
@@ -127,8 +136,7 @@ class OESController:
             if self.analysis_results is None:
                 raise ValueError("No analysis results to save. Please run the analysis first.")
 
-            output_name = "Analysis_Results.xlsx"
-            excel_path = f"{base_path}/{output_name}"
+            excel_path = os.path.join(base_path, f'{base_name}.xlsx')
 
             with pd.ExcelWriter(excel_path) as writer:
                 self.analysis_results.to_excel(writer, sheet_name=f"Threshold_{threshold}", index=False)
