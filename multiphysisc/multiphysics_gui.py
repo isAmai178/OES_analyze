@@ -390,8 +390,8 @@ class PlasmaAnalyzerGUI(QMainWindow):
 
     def _on_folder_changed(self, folder: str) -> None:
         """處理資料夾選擇變更"""
-        if folder:
-            self.current_folder = folder
+        if folder and hasattr(self, 'folder_path_map'):
+            self.current_folder = self.folder_path_map[folder]
             self._update_all_tables()
 
     def _setup_parameters_section(self) -> None:
@@ -569,9 +569,12 @@ class PlasmaAnalyzerGUI(QMainWindow):
 
             # 更新資料夾選擇器並顯示結果
             self.folder_combo.clear()
-            # 只顯示資料夾名稱
-            folder_names = [os.path.basename(folder) for folder in self.results.keys()]
-            self.folder_combo.addItems(folder_names)
+            # 保存完整路徑和基底名稱的對應關係
+            self.folder_path_map = {}
+            for folder in self.results.keys():
+                folder_name = os.path.basename(folder)
+                self.folder_path_map[folder_name] = folder
+                self.folder_combo.addItem(folder_name)
             if self.results:
                 self.folder_combo.setCurrentIndex(0)
                 self.current_folder = list(self.results.keys())[0]  # 使用完整路徑作為當前資料夾
