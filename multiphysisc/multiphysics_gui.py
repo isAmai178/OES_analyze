@@ -9,7 +9,8 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QFileDialog, QSpinBox,
     QTableWidget, QTableWidgetItem, QMessageBox, QComboBox,
-    QGroupBox, QGridLayout, QMenu, QDialog, QDialogButtonBox
+    QGroupBox, QGridLayout, QMenu, QDialog, QDialogButtonBox, QListWidget,
+    QListWidgetItem, QListView, QTreeView
 )
 from PyQt6.QtCore import Qt
 from Multiphysics import PlasmaAnalyzer
@@ -324,18 +325,74 @@ class PlasmaAnalyzerGUI(QMainWindow):
         """設定資料夾路徑區"""
         file_group = QHBoxLayout()
         
-        self.path_edit = QLineEdit()
-        self.path_edit.setPlaceholderText('選擇資料夾路徑...')
+        folder_layout = QHBoxLayout()
+        self.folder_list = QListWidget()
+        self.folder_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)  # 允許多選
+        btn_layout = QVBoxLayout()
+        add_btn = QPushButton('添加資料夾')
+        add_btn.clicked.connect(self._add_folder)
+        add_multiple_btn = QPushButton('批次添加')  # 新增批次添加按鈕
+        add_multiple_btn.clicked.connect(self._add_multiple_folders)
+        remove_btn = QPushButton('移除所選')
+        remove_btn.clicked.connect(self._remove_folder)
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(add_multiple_btn)
+        btn_layout.addWidget(remove_btn)
         
-        browse_btn = QPushButton('瀏覽')
-        browse_btn.clicked.connect(self._browse_folder)
-        browse_btn.setFixedWidth(80)
+        folder_layout.addWidget(self.folder_list)
+        folder_layout.addLayout(btn_layout)
         
-        file_group.addWidget(QLabel('資料夾路徑:'))
-        file_group.addWidget(self.path_edit)
-        file_group.addWidget(browse_btn)
+        file_group.addWidget(QLabel('已選擇的資料夾：'))
+        file_group.addLayout(folder_layout)
         
         self.main_layout.addLayout(file_group)
+
+    def _add_folder(self) -> None:
+        """添加資料夾到列表"""
+        folder_paths = QFileDialog.getExistingDirectory(
+            self, 
+            '選擇資料夾',
+            options=QFileDialog.Option.ShowDirsOnly | QFileDialog.Option.DontUseNativeDialog
+        )
+        
+        if folder_paths:
+            # 如果是第一個資料夾，載入屬性
+            if self.folder_list.count() == 0:
+                self._load_file_attributes(folder_paths)
+            self.folder_list.addItem(QListWidgetItem(folder_paths))
+
+    def _add_multiple_folders(self) -> None:
+        """批次添加多個資料夾"""
+        dialog = QFileDialog(self)
+        dialog.setFileMode(QFileDialog.FileMode.Directory)
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
+        
+        # 獲取檔案列表視圖並設定為多選
+        listview = dialog.findChild(QListView, 'listView')
+        if listview:
+            listview.setSelectionMode(QListView.SelectionMode.ExtendedSelection)
+        treeview = dialog.findChild(QTreeView)
+        if treeview:
+            treeview.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
+            
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            folders = dialog.selectedFiles()
+            for folder in folders:
+                if self.folder_list.count() == 0:
+                    self._load_file_attributes(folder)
+                self.folder_list.addItem(QListWidgetItem(folder))
+
+    def _remove_folder(self) -> None:
+        """從列表中移除所選資料夾"""
+        for item in self.folder_list.selectedItems():
+            self.folder_list.takeItem(self.folder_list.row(item))
+
+    def _on_folder_changed(self, folder: str) -> None:
+        """處理資料夾選擇變更"""
+        if folder:
+            self.current_folder = folder
+            self._update_all_tables()
 
     def _setup_parameters_section(self) -> None:
         """設定參數輸入區"""
@@ -345,17 +402,18 @@ class PlasmaAnalyzerGUI(QMainWindow):
         params_title.setStyleSheet('font-weight: bold; font-size: 14px;')
         params_layout.addWidget(params_title)
 
-        threshold_layout = QHBoxLayout()
-        threshold_label = QLabel('power臨界值(範圍:0~1000):')
-        self.threshold_spin = QSpinBox()
-        self.threshold_spin.setRange(0, 1000)
-        self.threshold_spin.setValue(self.DEFAULT_PARAMS.threshold)
-        self.threshold_spin.setFixedWidth(100)
-        threshold_layout.addWidget(threshold_label)
-        threshold_layout.addWidget(self.threshold_spin)
-        threshold_layout.addStretch()
+        # 移除臨界值設定
+        # threshold_layout = QHBoxLayout()
+        # threshold_label = QLabel('power臨界值(範圍:0~1000):')
+        # self.threshold_spin = QSpinBox()
+        # self.threshold_spin.setRange(0, 1000)
+        # self.threshold_spin.setValue(self.DEFAULT_PARAMS.threshold)
+        # self.threshold_spin.setFixedWidth(100)
+        # threshold_layout.addWidget(threshold_label)
+        # threshold_layout.addWidget(self.threshold_spin)
+        # threshold_layout.addStretch()
         
-        params_layout.addLayout(threshold_layout)
+        # params_layout.addLayout(threshold_layout)
         self.main_layout.addLayout(params_layout)
 
     def _setup_file_attributes_section(self) -> None:
@@ -413,8 +471,18 @@ class PlasmaAnalyzerGUI(QMainWindow):
 
     def _setup_results_section(self) -> None:
         """Setup the results table section."""
-        self.results_layout = QHBoxLayout()
         
+        # 添加資料夾選擇器
+        folder_select_layout = QHBoxLayout()
+        folder_select_layout.addWidget(QLabel("選擇資料夾："))
+        self.folder_combo = QComboBox()
+        self.folder_combo.setMinimumWidth(500)  # 設定最小寬度
+        self.folder_combo.currentTextChanged.connect(self._on_folder_changed)
+        folder_select_layout.addWidget(self.folder_combo)
+        folder_select_layout.addStretch()
+        self.main_layout.addLayout(folder_select_layout)
+
+        self.results_layout = QHBoxLayout()
         # Create a results section for each file type
         self.result_sections = {}
         for file_type in self.FILE_TYPES:
@@ -457,93 +525,111 @@ class PlasmaAnalyzerGUI(QMainWindow):
         self.main_layout.addLayout(self.results_layout)
 
     def _analyze_data(self) -> None:
-        """Handle data analysis action."""
+        """處理數據分析動作"""
         try:
-            folder_path = self.path_edit.text()
-            if not folder_path:
-                self._show_warning("警告", "請先選擇資料夾路徑")
+            selected_folders = [self.folder_list.item(i).text() for i in range(self.folder_list.count())]
+            if not selected_folders:
+                self._show_warning("警告", "請先選擇資料夾")
                 return
 
-            # 更新分析器的設定
-            self.analyzer.set_folder_path(folder_path)
-            self.analyzer.set_threshold(self.threshold_spin.value())
-            
-            # 重置時間設定並重新尋找激發時間
-            self.analyzer.activate_time = None
-            self.analyzer.end_time = None
-            self.analyzer.find_activation_time()
-            
-            # 更新檔案配置並執行分析
             self.results = {}
-            for file_type, selector in self.file_selectors.items():
-                selected_attrs = selector.get_selected_attributes()
-                if selected_attrs:
-                    # 對每個屬性進行區段分析
-                    file_results = {}
-                    for attr, sections in selected_attrs.items():
-                        # 分析各區段
-                        section_results = self.analyzer.analyze_sections(
-                            file_type, attr, sections
-                        )
-                        # 分析總區段
-                        total_results = self.analyzer.analyze_sections(
-                            file_type, attr, 1
-                        )
-                        # 合併結果
-                        section_results['總區段'] = total_results[1]
-                        file_results[attr] = section_results
-                    self.results[file_type] = file_results
+            for folder in selected_folders:
+                # 檢查所需檔案是否存在
+                if not all(os.path.exists(os.path.join(folder, file)) for file in self.FILE_TYPES):
+                    logger.warning(f"資料夾 {folder} 未包含所有必要檔案，已跳過")
+                    continue
+
+                # 設定資料夾路徑並尋找激發時間
+                self.analyzer.set_folder_path(folder)
+                self.analyzer.find_activation_time()
+                activation_time = self.analyzer.activate_time
+                end_time = self.analyzer.end_time
+
+                # 執行分析
+                folder_results = {}
+                for file_type, selector in self.file_selectors.items():
+                    selected_attrs = selector.get_selected_attributes()
+                    if selected_attrs:
+                        file_results = {}
+                        for attr, sections in selected_attrs.items():
+                            section_results = self.analyzer.analyze_sections(file_type, attr, sections)
+                            total_results = self.analyzer.analyze_sections(file_type, attr, 1)
+                            section_results['總區段'] = total_results[1]
+                            file_results[attr] = section_results
+                        folder_results[file_type] = file_results
+                self.results[folder] = {
+                    'activation_time': activation_time,
+                    'end_time': end_time,
+                    'analysis': folder_results
+                }
 
             if not self.results:
                 self._show_warning("警告", "分析未產生任何結果")
                 return
 
-            self._update_results_selectors()
-            self.save_btn.setEnabled(True)
-            self._show_info("成功", "分析完成！")
+            # 更新資料夾選擇器並顯示結果
+            self.folder_combo.clear()
+            # 只顯示資料夾名稱
+            folder_names = [os.path.basename(folder) for folder in self.results.keys()]
+            self.folder_combo.addItems(folder_names)
+            if self.results:
+                self.folder_combo.setCurrentIndex(0)
+                self.current_folder = list(self.results.keys())[0]  # 使用完整路徑作為當前資料夾
+                self._update_results_selectors()
+                self._update_all_tables()
+                self.save_btn.setEnabled(True)
+                self._show_info("成功", "分析完成！")
             
         except Exception as e:
-            logger.error(f"Error during data analysis: {e}")
+            logger.error(f"數據分析時發生錯誤: {e}")
             self._show_error("分析錯誤", str(e))
 
+    def _update_all_tables(self) -> None:
+        """更新所有結果表格"""
+        for file_type in self.FILE_TYPES:
+            self._update_table(file_type)
+
+    def _update_table(self, file_type: str) -> None:
+        """更新特定檔案類型的結果表格"""
+        attribute = self.result_sections[file_type]['selector'].currentText()
+        if attribute and self.current_folder in self.results:
+            table = self.result_sections[file_type]['table']
+            results = self.results[self.current_folder]['analysis'][file_type][attribute]
+            total_rows = len(results)
+            table.setRowCount(total_rows)
+            row = 0
+            for section, values in results.items():
+                if section == '總區段':
+                    continue
+                table.setItem(row, 0, QTableWidgetItem(f"區段 {section}"))
+                table.setItem(row, 1, QTableWidgetItem(f"{values['平均值']:.2f}"))
+                table.setItem(row, 2, QTableWidgetItem(f"{values['標準差']:.2f}"))
+                table.setItem(row, 3, QTableWidgetItem(f"{values['穩定度']:.2f}"))
+                row += 1
+            if '總區段' in results:
+                total_values = results['總區段']
+                table.setItem(row, 0, QTableWidgetItem("總區段"))
+                table.setItem(row, 1, QTableWidgetItem(f"{total_values['平均值']:.2f}"))
+                table.setItem(row, 2, QTableWidgetItem(f"{total_values['標準差']:.2f}"))
+                table.setItem(row, 3, QTableWidgetItem(f"{total_values['穩定度']:.2f}"))
+
     def _update_results_selectors(self) -> None:
-        """Update attribute selectors with available results."""
-        for file_type, section in self.result_sections.items():
-            selector = section['selector']
-            selector.clear()
-            if file_type in self.results:
-                attributes = list(self.results[file_type].keys())
-                selector.addItems(attributes)
-                if attributes:
-                    selector.setCurrentIndex(0)
+        """更新屬性選擇器"""
+        if self.results:
+            first_folder = list(self.results.keys())[0]
+            for file_type, section in self.result_sections.items():
+                selector = section['selector']
+                selector.clear()
+                if file_type in self.results[first_folder]['analysis']:
+                    attributes = list(self.results[first_folder]['analysis'][file_type].keys())
+                    selector.addItems(attributes)
+                    if attributes:
+                     selector.setCurrentIndex(0)
 
     def _on_attribute_selected(self, file_type: str, attribute: str) -> None:
-        """Handle attribute selection change in results section."""
-        if not attribute or file_type not in self.results:
-            return
-
-        table = self.result_sections[file_type]['table']
-        
-        # 更新表格
-        total_rows = len(self.results[file_type][attribute])
-        table.setRowCount(total_rows)
-        
-        row = 0
-        for section, values in self.results[file_type][attribute].items():
-            if section == '總區段':
-                continue
-            table.setItem(row, 0, QTableWidgetItem(f"區段 {section}"))
-            table.setItem(row, 1, QTableWidgetItem(f"{values['平均值']:.2f}"))
-            table.setItem(row, 2, QTableWidgetItem(f"{values['標準差']:.2f}"))
-            table.setItem(row, 3, QTableWidgetItem(f"{values['穩定度']:.2f}"))
-            row += 1
-        
-        if '總區段' in self.results[file_type][attribute]:
-            total_values = self.results[file_type][attribute]['總區段']
-            table.setItem(row, 0, QTableWidgetItem("總區段"))
-            table.setItem(row, 1, QTableWidgetItem(f"{total_values['平均值']:.2f}"))
-            table.setItem(row, 2, QTableWidgetItem(f"{total_values['標準差']:.2f}"))
-            table.setItem(row, 3, QTableWidgetItem(f"{total_values['穩定度']:.2f}"))
+        """處理結果區的屬性選擇變更"""
+        if self.current_folder and file_type in self.results[self.current_folder]['analysis']:
+            self._update_table(file_type)
         
 
 
@@ -554,7 +640,7 @@ class PlasmaAnalyzerGUI(QMainWindow):
         copy_row_action = menu.addAction("複製當前行")
         copy_all_action = menu.addAction("複製全部")
         menu.addSeparator()  # 添加分隔線
-        show_plot_action = menu.addAction("觀察圖表")  # 新增圖表選項
+        show_plot_action = menu.addAction("顯示圖表")  # 新增圖表選項
         
         action = menu.exec(table.mapToGlobal(pos))
         
@@ -575,32 +661,26 @@ class PlasmaAnalyzerGUI(QMainWindow):
             self._show_info("複製成功", "已複製選中儲存格內容")
 
     def _copy_row(self, table):
-        """複製整行"""
+        """複製整行數值"""
         current_row = table.currentRow()
         if current_row >= 0:
             row_data = []
-            for col in range(table.columnCount()):
+            for col in range(1, table.columnCount()):  # 跳過第一列（區段標籤）
                 item = table.item(current_row, col)
                 if item is not None:
                     row_data.append(item.text())
             
             clipboard = QApplication.clipboard()
             clipboard.setText('\t'.join(row_data))
-            self._show_info("複製成功", "已複製整行內容")
+            self._show_info("複製成功", "已複製整行數值")
 
     def _copy_all(self, table):
-        """複製全部內容"""
+        """複製全部數值"""
         all_data = []
-        # 添加表頭
-        headers = []
-        for col in range(table.columnCount()):
-            headers.append(table.horizontalHeaderItem(col).text())
-        all_data.append('\t'.join(headers))
-        
-        # 添加數據
+        # 添加數據（跳過第一列）
         for row in range(table.rowCount()):
             row_data = []
-            for col in range(table.columnCount()):
+            for col in range(1, table.columnCount()):  # 跳過第一列（區段標籤）
                 item = table.item(row, col)
                 if item is not None:
                     row_data.append(item.text())
@@ -608,63 +688,35 @@ class PlasmaAnalyzerGUI(QMainWindow):
         
         clipboard = QApplication.clipboard()
         clipboard.setText('\n'.join(all_data))
-        self._show_info("複製成功", "已複製全部內容")
+        self._show_info("複製成功", "已複製全部數值")
 
     def _show_plot(self, table):
         """顯示分析圖表"""
         try:
-            # 獲取當前選中的檔案類型和屬性
             for file_type, section in self.result_sections.items():
                 if section['table'] == table:
                     attribute = section['selector'].currentText()
-                    if attribute and file_type in self.results:
-                        # 讀取數據
-                        df = pd.read_csv(os.path.join(self.analyzer.folder_path, file_type))
-                        
-                        # 獲取數據
+                    if attribute and self.current_folder in self.results:
+                        df = pd.read_csv(os.path.join(self.current_folder, file_type))
                         data = df[attribute].values
                         
-                        # 獲取激發時間和結束時間的索引
                         df['Time_seconds'] = df['Time'].apply(lambda x: sum(float(i) * m for i, m in zip(x.split(':'), [3600, 60, 1])))
-                        activate_time = np.where(df['Time_seconds'] >= float(self.analyzer.activate_time.split(':')[0]) * 3600 + 
-                                              float(self.analyzer.activate_time.split(':')[1]) * 60 + 
-                                              float(self.analyzer.activate_time.split(':')[2]))[0][0]
-                        end_time = np.where(df['Time_seconds'] <= float(self.analyzer.end_time.split(':')[0]) * 3600 + 
-                                         float(self.analyzer.end_time.split(':')[1]) * 60 + 
-                                         float(self.analyzer.end_time.split(':')[2]))[0][-1]
+                        activation_time = self.results[self.current_folder]['activation_time']
+                        end_time = self.results[self.current_folder]['end_time']
+                        start_idx = np.where(df['Time_seconds'] >= float(activation_time.split(':')[0]) * 3600 + 
+                                            float(activation_time.split(':')[1]) * 60 + 
+                                            float(activation_time.split(':')[2]))[0][0]
+                        end_idx = np.where(df['Time_seconds'] <= float(end_time.split(':')[0]) * 3600 + 
+                                        float(end_time.split(':')[1]) * 60 + 
+                                        float(end_time.split(':')[2]))[0][-1]
                         
-                        # 創建並顯示圖表對話框
-                        dialog = PlotDialog(
-                            data, 
-                            self.results[file_type][attribute],
-                            activate_time,
-                            end_time,
-                            self
-                        )
+                        dialog = PlotDialog(data, self.results[self.current_folder]['analysis'][file_type][attribute], 
+                                            start_idx, end_idx, self)
                         dialog.exec()
                         break
-                        
         except Exception as e:
-            logger.error(f"Error showing plot: {e}")
+            logger.error(f"顯示圖表時發生錯誤: {e}")
             self._show_error("圖表顯示錯誤", str(e))
-
-    def _browse_folder(self) -> None:
-        """Handle folder browsing action."""
-        try:
-            folder_path = QFileDialog.getExistingDirectory(self, '選擇資料夾')
-            if folder_path:
-                self.path_edit.setText(folder_path)
-                # 清理舊的選擇和結果
-                self._clear_all_data()
-                # 重置分析器的時間設定
-                self.analyzer.activate_time = None
-                self.analyzer.end_time = None
-                # 載入新的屬性
-                self._load_file_attributes(folder_path)
-                
-        except Exception as e:
-            logger.error(f"Error during folder browsing: {e}")
-            self._show_error("資料夾瀏覽錯誤", str(e))
 
     def _clear_all_data(self) -> None:
         """清理所有數據和選擇"""
@@ -682,42 +734,41 @@ class PlasmaAnalyzerGUI(QMainWindow):
         self.save_btn.setEnabled(False)
 
     def _load_file_attributes(self, folder_path: str) -> None:
-        """Load available attributes for each file type."""
-        for file_type in self.FILE_TYPES:
+        for file_type in self.FILE_TYPES:  # FILE_TYPES 包含 'RF.csv', 'MFC.csv', 'BgCgTemp.csv'
             try:
                 file_path = os.path.join(folder_path, file_type)
                 if os.path.exists(file_path):
                     df = pd.read_csv(file_path)
                     columns = df.columns.tolist()
                     if 'Time' in columns:
-                        columns.remove('Time')
+                        columns.remove('Time')  # 移除 'Time' 欄位，避免作為特徵屬性
                     self.file_selectors[file_type].set_available_attributes(columns)
                 else:
-                    logger.warning(f"File not found: {file_path}")
+                    logger.warning(f"檔案不存在: {file_path}")
                     self.file_selectors[file_type].set_available_attributes([])
             except Exception as e:
-                logger.error(f"Error loading attributes for {file_type}: {e}")
+                logger.error(f"載入 {file_type} 的屬性時發生錯誤: {e}")
                 self.file_selectors[file_type].set_available_attributes([])
 
     def _save_results(self) -> None:
-        """Handle results saving action."""
+        """處理結果儲存動作"""
         try:
-            if not hasattr(self, 'results'):
+            if not self.results:
                 self._show_warning("警告", "請先執行分析")
                 return
 
-            # 選擇儲存目錄
-            save_dir = QFileDialog.getExistingDirectory(self, '選擇儲存位置')
-            if not save_dir:
-                return
-
-            # 設定輸出路徑並儲存結果
-            self.analyzer.output_path = save_dir
-            self.analyzer.save_results(self.results)
-            self._show_info("成功", "結果已成功儲存！")
+            base_save_dir = QFileDialog.getExistingDirectory(self, '選擇儲存位置')
+            if base_save_dir:
+                for folder in self.results:
+                    folder_name = os.path.basename(folder)
+                    save_path = os.path.join(base_save_dir, folder_name)
+                    os.makedirs(save_path, exist_ok=True)
+                    self.analyzer.output_path = save_path
+                    self.analyzer.save_results(self.results[folder]['analysis'])
+                self._show_info("成功", "結果已成功儲存！")
             
         except Exception as e:
-            logger.error(f"Error saving results: {e}")
+            logger.error(f"儲存結果時發生錯誤: {e}")
             self._show_error("儲存錯誤", str(e))
 
     def _show_error(self, title: str, message: str) -> None:

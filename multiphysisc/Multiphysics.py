@@ -39,12 +39,13 @@ class PlasmaAnalyzer:
             rf_df = pd.read_csv(os.path.join(self.folder_path, 'RF.csv'))
             time_series = rf_df['Power'].values
 
+            # 尋找第一個不為0的值作為激發時間
             activated = False
             for i, value in enumerate(time_series):
-                if not activated and value > self.threshold:
+                if value != 0 and not activated:
                     self.activate_time = rf_df['Time'].iloc[i]
                     activated = True
-                elif activated and value < self.threshold:
+                elif activated and value == 0:
                     self.end_time = rf_df['Time'].iloc[i-1]
                     break
 
@@ -77,11 +78,10 @@ class PlasmaAnalyzer:
             # 讀取檔案
             file_path = os.path.join(self.folder_path, file_name)
             df = pd.read_csv(file_path)
-            
             # 篩選有效時間範圍的數據
             mask = (df['Time'] >= self.activate_time) & (df['Time'] <= self.end_time)
             df_activated = df[mask]
-            
+            #logger.info(df_activated)
             if df_activated.empty:
                 raise ValueError(f"在有效時間範圍內找不到數據")
 

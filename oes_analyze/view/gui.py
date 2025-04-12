@@ -2,7 +2,7 @@ import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QFileDialog, QSpinBox,
-    QDoubleSpinBox, QTableWidget, QTableWidgetItem, QMessageBox, QMenu
+    QDoubleSpinBox, QTableWidget, QTableWidgetItem, QMessageBox, QMenu, QCheckBox
 )
 from PyQt6.QtCore import Qt
 from controller.controller import OESController
@@ -32,10 +32,15 @@ class OESAnalyzerGUI(QMainWindow):
         self.main_layout.setSpacing(10)
         self.main_layout.setContentsMargins(10, 10, 10, 10)
         self._setup_file_section()
+        self._setup_toggle_checkbox()
         self._setup_parameters_section()
         self._setup_analysis_section()
         self._setup_results_section()
-
+    def _setup_toggle_checkbox(self) -> None:
+        """Setup a checkbox to toggle the parameters section visibility."""
+        self.toggle_checkbox = QCheckBox("顯示參數設定")
+        self.toggle_checkbox.stateChanged.connect(self._toggle_parameters_section)
+        self.main_layout.addWidget(self.toggle_checkbox)
     def _setup_file_section(self):
         """Create file selection section."""
         file_layout = QHBoxLayout()
@@ -54,20 +59,18 @@ class OESAnalyzerGUI(QMainWindow):
         self.file_info_label = QLabel()
         self.main_layout.addWidget(self.file_info_label)
         
-    def _setup_parameters_section(self):
-        """Create parameters input section."""
-        params_layout = QVBoxLayout()
-
-        # Title
+    def _setup_parameters_section(self) -> None:
+        """Setup the parameters input section."""
+        self.params_widget = QWidget()
+        params_layout = QVBoxLayout(self.params_widget)
+        
         params_title = QLabel('參數設定')
         params_title.setStyleSheet('font-weight: bold; font-size: 14px;')
         params_layout.addWidget(params_title)
-        
-        # Parameters grid
+
         params_grid = QHBoxLayout()
         params_grid.setSpacing(20)
-        
-        #Wave detection
+
         wave_layout = QVBoxLayout()
         wave_label = QLabel('檢測波長:')
         self.detect_wave_spin = QDoubleSpinBox()
@@ -78,8 +81,7 @@ class OESAnalyzerGUI(QMainWindow):
         wave_layout.addWidget(wave_label)
         wave_layout.addWidget(self.detect_wave_spin)
         params_grid.addLayout(wave_layout)
-        
-        # Threshold
+
         threshold_layout = QVBoxLayout()
         threshold_label = QLabel('光譜強度:')
         self.threshold_spin = QDoubleSpinBox()
@@ -90,8 +92,7 @@ class OESAnalyzerGUI(QMainWindow):
         threshold_layout.addWidget(threshold_label)
         threshold_layout.addWidget(self.threshold_spin)
         params_grid.addLayout(threshold_layout)
-        
-        # Section count
+
         section_layout = QVBoxLayout()
         section_label = QLabel('解離區段數:')
         self.section_spin = QSpinBox()
@@ -103,7 +104,17 @@ class OESAnalyzerGUI(QMainWindow):
         params_grid.addLayout(section_layout)
 
         params_layout.addLayout(params_grid)
-        self.main_layout.addLayout(params_layout)
+        self.params_widget.setLayout(params_layout)
+        self.main_layout.addWidget(self.params_widget)
+        self.params_widget.hide()  # 預設隱藏參數區
+
+    def _toggle_parameters_section(self, state):
+        """Toggle the visibility of the parameters section based on checkbox state."""
+        if state == Qt.CheckState.Checked.value:
+            self.params_widget.show()
+        else:
+            self.params_widget.hide()
+
 
     def _setup_results_section(self):
         """Create results display section."""
