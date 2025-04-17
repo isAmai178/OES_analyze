@@ -248,7 +248,7 @@ class OESAnalyzerGUI(QMainWindow):
                 os.path.join(folder_path, f"{base_name}{i:04d}.txt") 
                 for i in range(initial_start, initial_end + 1)
             ]
-
+            print(file_paths)
             file_name = base_name.split('_')[1]  # 取得檔案前段名稱(通常為時間)
             
             # 創建分析器並設置回調
