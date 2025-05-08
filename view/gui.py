@@ -695,7 +695,7 @@ class OESAnalyzerGUI(QMainWindow):
         else:
             QMessageBox.warning(self, "警告", "未找到選擇的資料夾分析結果")
 
-
+class MultiFolderDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("選擇多個資料夾")
