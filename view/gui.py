@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QLineEdit, QFileDialog, QSpinBox,
     QDoubleSpinBox, QTableWidget, QTableWidgetItem, QMessageBox, QMenu,
     QTextEdit, QGroupBox , QHeaderView,  QCheckBox, QGridLayout, QComboBox,
-    QDialog, QListWidget
+    QDialog, QListWidget, QSizePolicy
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
@@ -63,7 +63,7 @@ class OESAnalyzerGUI(QMainWindow):
         self.main_layout.setContentsMargins(10, 10, 10, 10)
         
         #最上方檔案功能
-        self._setup_file_section(self.main_layout)  # 檔案路徑設定
+        # self._setup_OES_file_section(self.main_layout)  # 檔案路徑設定
 
         # 創建一個水平佈局
         self.horizontal_layout = QHBoxLayout()
@@ -82,6 +82,7 @@ class OESAnalyzerGUI(QMainWindow):
         self.horizontal_layout.addWidget(stability_group)
 
         #左邊為光譜分析功能
+        self._setup_OES_file_section(left_layout)  # 檔案路徑設定
         self._setup_save_directory_selection(left_layout) #保存檔案路徑設定
         self._setup_OES_parameters_section(left_layout)  # 參數設定
         self._setup_waveband_settings(left_layout)  # 波段設定
@@ -95,14 +96,16 @@ class OESAnalyzerGUI(QMainWindow):
         self._setup_image_display(left_layout)  # 圖像顯示
 
         # 右側為穩定度分析功能
+        self._setup_stability_file_section(right_layout) # 檔案路徑設定
         self._setup_Stability_analysis_parameters_section(right_layout)  # 參數設定
         self._setup_Stability_analysis_section(right_layout)  # 分析按鈕
         self._setup_results_section(right_layout)  # 結果顯示
 
-    def _setup_file_section(self, parent_layout):
+    def _setup_OES_file_section(self, parent_layout):
         """Create file selection section."""
-        group = QGroupBox("檔案設定")
-        layout = QVBoxLayout()
+        # 光譜分析 GroupBox
+        spectrum_group = QGroupBox("檔案設定")
+        spectrum_layout = QVBoxLayout()
 
         folder_layout = QHBoxLayout()
         self.path_edit = QLineEdit()
@@ -115,12 +118,27 @@ class OESAnalyzerGUI(QMainWindow):
         folder_layout.addWidget(self.path_edit)
         folder_layout.addWidget(browse_button)
 
-        # self.main_layout.addLayout(file_layout)
-        # self.file_info_label = QLabel()
-        # self.main_layout.addWidget(self.file_info_label)
-        layout.addLayout(folder_layout)
-        group.setLayout(layout)
-        parent_layout.addWidget(group)
+        spectrum_layout.addLayout(folder_layout)
+        spectrum_group.setLayout(spectrum_layout)
+        parent_layout.addWidget(spectrum_group)
+        # spectrum_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+    def _setup_stability_file_section(self, parent_layout):
+        # 穩定度 GroupBox
+        stability_group = QGroupBox("檔案設定")
+        stability_layout = QVBoxLayout()
+
+        folder_browse_button = QPushButton("選擇資料夾")
+        folder_browse_button.clicked.connect(self._browse_folders)
+        stability_layout.addWidget(folder_browse_button)
+
+        self.folder_selector = QComboBox()
+        self.folder_selector.currentIndexChanged.connect(self._update_results_display)
+        stability_layout.addWidget(self.folder_selector)
+
+        stability_layout.addLayout(stability_layout)
+        stability_group.setLayout(stability_layout)
+        parent_layout.addWidget(stability_group)
 
     def _setup_Stability_analysis_parameters_section(self ,parent_layout):
         """Create parameters input section."""
@@ -284,15 +302,15 @@ class OESAnalyzerGUI(QMainWindow):
 
     def _setup_Stability_analysis_section(self, parent_layout):
         """Setup the analysis button section with folder browsing and selection."""
-        # Add a folder browsing button
-        folder_browse_button = QPushButton("選擇資料夾")
-        folder_browse_button.clicked.connect(self._browse_folders)
-        parent_layout.addWidget(folder_browse_button)
+        # # Add a folder browsing button
+        # folder_browse_button = QPushButton("選擇資料夾")
+        # folder_browse_button.clicked.connect(self._browse_folders)
+        # parent_layout.addWidget(folder_browse_button)
 
-        # Add a dropdown for selecting a folder
-        self.folder_selector = QComboBox()
-        self.folder_selector.currentIndexChanged.connect(self._update_results_display)
-        parent_layout.addWidget(self.folder_selector)
+        # # Add a dropdown for selecting a folder
+        # self.folder_selector = QComboBox()
+        # self.folder_selector.currentIndexChanged.connect(self._update_results_display)
+        # parent_layout.addWidget(self.folder_selector)
 
         analyze_button = QPushButton("穩定度分析")
         analyze_button.clicked.connect(self._analyze_data)
@@ -677,7 +695,7 @@ class OESAnalyzerGUI(QMainWindow):
         else:
             QMessageBox.warning(self, "警告", "未找到選擇的資料夾分析結果")
 
-class MultiFolderDialog(QDialog):
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("選擇多個資料夾")

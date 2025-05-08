@@ -267,7 +267,7 @@ class OESController:
                     base_path=folder,
                     base_name=base_name,
                     start_index=start_index,
-                    end_index=end_index
+                    # end_index=end_index
                 )
 
                 # 調用原有的 analyze_data 方法進行分析
